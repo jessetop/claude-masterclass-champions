@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": ["Read", "Bash(python3 -m pytest *)", "Bash(python3 app.py *)"],
+    "deny": [
+      "Read(./config/secrets.env)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(~/.ssh/**)",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "network": {
+      "allowedDomains": ["pypi.org", "files.pythonhosted.org"]
+    },
+    "filesystem": {
+      "allowWrite": ["."],
+      "denyRead": ["./config/secrets.env", "~/.ssh"],
+      "denyWrite": ["./.claude", "./.mcp.json"]
+    }
+  }
+}

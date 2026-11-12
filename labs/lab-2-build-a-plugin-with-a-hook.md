@@ -1,0 +1,78 @@
+# Lab 2: Build a Plugin With a Hook
+
+**Course:** AI Champions Training: Claude Code for Engineering Teams
+
+> Part of **[AI Champions Training: Labs](README.md)**. `$FILES` is the `demo-files` folder your instructor gives you. Read the [guide preamble](README.md) for prerequisites and cost notes before you start.
+
+---
+
+**Learning objective:** Take a half-built plugin to a working one: fix its hook, write its command, make its checking agent read-only, package it in a marketplace, and test its behavior with an eval suite. Time: 75 minutes.
+
+**Files:** `$FILES/lab2-plugin`: `relnotes-starter/` (the plugin, with an `evals/` folder of six cases), `marketplace-template/`, `score_lab2.py`. Tools: `$FILES/tools/plugin_lint.py`. Review aid: `$FILES/templates/plugin-review.md`.
+
+**Context:** A plugin is a folder with `.claude-plugin/plugin.json` and components at its root: `commands/`, `agents/`, `hooks/hooks.json`. Components are namespaced `plugin:component`. A hook in a plugin names its script with `${CLAUDE_PLUGIN_ROOT}`, because the plugin can be installed anywhere. `claude --plugin-dir <path>` loads a plugin for one session. `claude plugin validate <path>` checks the files. `claude plugin details <name>` lists the contents and the projected token cost. `claude plugin eval` runs the cases in `evals/` and uses model requests. The plugin, `relnotes`, drafts `RELEASE_NOTES.md` from the git log, and a PostToolUse hook checks the file against a format checker. `plugin_lint.py` is a cheap local check that costs nothing. It does not replace `claude plugin validate`, and it tests no behavior.
+
+**Steps:**
+
+1. **Inspect (about 10 minutes).** Goal: a list of what is wrong, before you change anything.
+   - Copy `relnotes-starter` to `~/plugins/relnotes`. Run `python3 $FILES/tools/plugin_lint.py ~/plugins/relnotes --marketplace $FILES/lab2-plugin/marketplace-template`, then `claude plugin validate ~/plugins/relnotes`.
+   - Acceptance criteria: a list of each FAIL and WARN, with one sentence on why each matters.
+   - Hints: read the hook file, the command, the agent and the root `CLAUDE.md`. Compare the plugin name in the manifest with the marketplace entry.
+
+2. **Fix the hook (about 12 minutes).** Goal: the hook script runs wherever the plugin is installed, and you can show it blocks bad notes and passes good ones.
+   - Acceptance criteria: `hooks/hooks.json` uses `${CLAUDE_PLUGIN_ROOT}` and no fixed path; piping a bad `RELEASE_NOTES.md` event into `scripts/lint_notes.py` exits 2 with a message; a good file exits 0.
+   - Hints: the starter points at a path on one person's machine. Quote the variable in the command. Test the script by hand with a JSON event before you test it in Claude Code.
+
+3. **Write the command and tighten the agent (about 18 minutes).** Goal: `/relnotes:release-notes` does the job the evals expect, and the checking agent cannot change anything.
+   - Acceptance criteria: the command has a specific description; it works out the commit range; groups entries into the four sections in the order the format checker enforces; ends every bullet with a short commit hash; hands the draft and the log text to the `changelog-auditor` agent before finishing; never invents an entry; and changes nothing except `RELEASE_NOTES.md`. The agent has only read tools. No TODO remains.
+   - Hints: the evals are the specification, so read all six prompts and graders first. The agent has no shell, so ask what it needs to be given. Rules that must apply belong in the command or a skill, where an eval can test them. A `CLAUDE.md` at the plugin root is not loaded as project context, so do not rely on it. A vague description can stop the command from being chosen.
+
+4. **Package it (about 10 minutes).** Goal: your plugin installable from a marketplace of your own.
+   - Acceptance criteria: a marketplace folder with `.claude-plugin/marketplace.json`, the plugin at `plugins/relnotes`, an entry whose name matches the manifest name and whose `source` path exists, and `claude plugin validate` passes on both the plugin and the marketplace.
+   - Hints: start from `marketplace-template`. Add it with `claude plugin marketplace add <folder>`. Compare the template's entry name with your manifest name.
+
+5. **Evaluate (about 20 minutes).** Goal: evidence that the behavior holds, within a cost cap.
+   - Acceptance criteria: a run of the suite with the number of runs and a cost cap that you chose; the result files or summary saved; and a short note on any case that failed and what you changed because of it.
+   - Hints: `claude plugin eval ~/plugins/relnotes --runs 1 --ablation none --max-cost-usd <your cap>` keeps the first run small. A case that checks the format hook (`hook-lints-bad-notes`) tests whether Claude sees the hook's message. Whether the message of a PostToolUse hook that exits 2 reaches Claude is not confirmed in the docs read, so if that case fails, record what you saw as a finding and do not hide it. The `ignores-unrelated` case tests whether your command triggers on the wrong prompts. Shortening a description can stop a command being chosen, so rerun the cases after you edit one.
+
+6. **Collect the evidence (about 5 minutes).** Goal: one `EVIDENCE.md` you can hand in.
+   - Acceptance criteria: it holds the output of `claude plugin validate`, the output of `claude --plugin-dir ~/plugins/relnotes plugin details relnotes` including the token cost, and the eval summary.
+   - Then run `python3 score_lab2.py ~/plugins/relnotes --marketplace <your marketplace> --evidence EVIDENCE.md`.
+
+**Checkpoint:** `score_lab2.py` reports at least 80, the hook exits 2 on bad notes and 0 on good notes, and the plugin validates.
+
+**Common problems:**
+
+- `Hook command does not use ${CLAUDE_PLUGIN_ROOT}`: the starter's fixed path is still there.
+- The hook never fires in a session: the plugin is not loaded. Start with `claude --plugin-dir ~/plugins/relnotes`, or run `/reload-plugins` after an install.
+- The marketplace install says it cannot find the plugin: the entry name does not match the manifest name, or `source` points at the wrong folder.
+- Every eval case fails: check that Git is 2.31 or later and that you are signed in. Check the run with `--runs 1` on one case first.
+- The suite is too slow or too costly: lower the number of runs, skip the baseline with `--ablation none`, and set `--max-cost-usd`.
+- The command is not chosen in `groups-by-type`: its description is too vague, or it does not say when to use it.
+
+**Scoring rubric (100 points, from `score_lab2.py`):**
+
+| Item | Points |
+|---|---|
+| Manifest with a kebab-case name | 5 |
+| `hooks.json` valid, uses `${CLAUDE_PLUGIN_ROOT}`, points at a script that exists | 20 |
+| Hook behavior: exit 2 on bad notes, 0 on good notes, ignores other files | 15 |
+| Command: no TODO, specific description, names the file and the agent, four sections in order, never invents and changes nothing else | 20 |
+| Checking agent has read-only tools | 10 |
+| Marketplace entry matches the manifest and its source holds the plugin | 10 |
+| Evidence: validate output, token cost, eval summary | 20 |
+
+The scorer checks the files and the pasted evidence. It cannot prove the commands ran, so the facilitator checks a screen or a result file for the eval run.
+
+**Facilitator note:** Remove before sharing. The finished plugin is `facilitator/lab2/solution-marketplace/plugins/relnotes`, inside a marketplace named `team-tools`, and scores 100 with the scorer. Traps planted in `relnotes-starter`:
+
+| Trap | Where |
+|---|---|
+| A fixed absolute path to the hook script | `hooks/hooks.json` (`/home/student/plugins/...`) |
+| A checking agent with write-capable tools and a `permissionMode` field | `agents/changelog-auditor.md` (`tools` includes Bash, Edit, Write) |
+| A command left as TODO with a 20-character description | `commands/release-notes.md` |
+| Format rules in a root `CLAUDE.md` that may not load | `CLAUDE.md` (a WARN: a root file is not loaded as project context) |
+| A marketplace entry named `release-notes` for a plugin named `relnotes` | `marketplace-template/.claude-plugin/marketplace.json` |
+| An author placeholder | `.claude-plugin/plugin.json` |
+
+Unconfirmed: whether the stderr of an exit-2 PostToolUse hook is fed to Claude. The `hook-lints-bad-notes` case exists to find out, so rehearse it. Whether a plugin agent honors `permissionMode` is also unconfirmed, and the linter reports it as a WARN only. An eval run uses model requests on each student's seat, and `claude plugin eval` needs a recent version, so check `claude --version` on the class image. Watch for students who raise the cost cap to rescue a failing case without reading the failure, and for students who delete a failing eval to pass. Hooks in a plugin run outside the sandbox: ask each student what their hook can reach.

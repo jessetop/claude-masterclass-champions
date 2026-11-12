@@ -1,0 +1,7 @@
+step,what_to_record,value,notes
+1_before,/context total for the session at startup in shopkit (as shown),example,fill from your own session
+1_before,/context line for CLAUDE.md (as shown),example,
+1_before,claude plugin details shopkit-helpers: projected token cost,example,
+2_after,/context total at startup after trimming CLAUDE.md,example,
+2_after,/context line for CLAUDE.md after trimming,example,
+2_after,claude plugin details shopkit-helpers: projected token cost after trimming descriptions,example,

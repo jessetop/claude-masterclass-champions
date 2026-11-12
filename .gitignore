@@ -1,0 +1,12 @@
+# Build output and student packs are generated, never committed.
+student-pack/
+*.student-pack/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+
+# Python
+__pycache__/
+*.pyc
