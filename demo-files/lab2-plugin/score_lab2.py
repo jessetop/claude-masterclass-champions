@@ -502,9 +502,25 @@ def main(argv):
     # keyword search over the file, and a sentence claiming a result scores the same as the
     # result. The lab says this, in Step 6.
     vb = blocks["validate"]
-    neutral = re.sub(r"(?i)\b(0|no|zero)\s+(error|errors|failure|failures|problem|problems)\b", " ZEROERRORS ", vb)
-    good_run = re.search(r"(?i)\b(passed|passes|valid|success|successful|succeeded|ok|ZEROERRORS)\b", neutral)
-    bad_run = re.search(r"(?i)\bnot ok\b|\b(error|errors|fail|failed|fails|failing|invalid|broken|cannot|could not|traceback)\b", neutral)
+    # Real `claude plugin validate` output, captured from 2.1.322 on 2026-11-14, has two
+    # halves. The plugin's own result comes first. Then a "Plugin directory checks for
+    # ..." section about SUBMITTING to the plugin catalog, which reports README, LICENSE
+    # and icon problems, and which the tool itself closes with "These plugin directory
+    # checks do not change the result below."
+    #
+    # That second half must not be read as failure. This lab's own solution plugin
+    # reports "Found 2 problems the plugin directory refuses a submission for" and is
+    # perfectly valid, and the half also contains the sentence "To fail on problems ...",
+    # whose bare word "fail" scored a correct student 0 of 8 until this was fixed.
+    #
+    # The real signal is "Found N errors" in the FIRST half: a broken manifest prints
+    # "Found 4 errors:" there, a good one prints no such line. Exit status is 0 for both,
+    # so it cannot be used.
+    vb_plugin = re.split(r"(?im)^\s*Plugin directory checks for\b", vb)[0]
+    real_errors = re.search(r"(?i)Found\s+([1-9]\d*)\s+error", vb_plugin)
+    neutral = re.sub(r"(?i)\b(0|no|zero)\s+(error|errors|failure|failures|problem|problems)\b", " ZEROERRORS ", vb_plugin)
+    good_run = re.search(r"(?i)\b(validating|passed|passes|valid|success|successful|succeeded|ok|ZEROERRORS)\b", neutral)
+    bad_run = real_errors or re.search(r"(?i)\bnot ok\b|\b(failed|failing|invalid|broken|traceback)\b", neutral)
     not_run = NOT_RUN.search(vb)
     award(8, bool(vb.strip()) and bool(good_run) and not bad_run and not not_run, "Evidence: validate output pasted and it reports success",
           "paste the `claude plugin validate` output under a `claude plugin validate` line, showing it passed (0 errors). If it still reports errors, fix them and run it again"

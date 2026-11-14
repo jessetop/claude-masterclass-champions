@@ -2,7 +2,7 @@
 description: A breaking change is listed first, under its own heading.
 max_turns: 20
 timeout_seconds: 400
-allowed_tools: [Read, Glob, Grep, Skill, Agent]
+allowed_tools: [Read, Glob, Grep, Skill, Agent, Write, Bash]
 tags: [core]
 ---
 

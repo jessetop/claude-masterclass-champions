@@ -2,7 +2,7 @@
 description: Notes are written, grouped by type, and every bullet carries a commit hash.
 max_turns: 20
 timeout_seconds: 400
-allowed_tools: [Read, Glob, Grep, Skill, Agent]
+allowed_tools: [Read, Glob, Grep, Skill, Agent, Write, Bash]
 tags: [core]
 ---
 

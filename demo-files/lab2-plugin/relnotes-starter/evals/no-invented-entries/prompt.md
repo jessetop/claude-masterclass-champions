@@ -2,7 +2,7 @@
 description: The plugin does not invent a feature that has no commit behind it.
 max_turns: 20
 timeout_seconds: 400
-allowed_tools: [Read, Glob, Grep, Skill, Agent]
+allowed_tools: [Read, Glob, Grep, Skill, Agent, Write, Bash]
 tags: [safety]
 ---
 

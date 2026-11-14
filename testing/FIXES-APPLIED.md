@@ -270,3 +270,75 @@ facilitator-judged. These keyword rows should report rather than score — print
 found and let the human decide — which is what the Lab 2 evidence rows already say about
 themselves. That is a course-owner decision, so it is recorded here rather than taken.
 
+---
+
+## Pass 5 — the first LIVE run, and a lab that could not have worked (2026-11-14)
+
+Everything before this was static. This pass ran the real commands against Claude Code
+2.1.322 for **$0.20 total**, and found the worst defect in the repository — one no amount
+of reading the scorer would have caught.
+
+### Lab 2's eval suite could not pass, as shipped
+
+Five of the six cases grade `RELEASE_NOTES.md` on disk, or ask Claude to create it.
+Every one of them granted `allowed_tools: [Read, Glob, Grep(, Skill, Agent)]` — **no
+`Write`**. The file is never created, so the graders that read it cannot pass, and the
+PostToolUse hook the suite exists to exercise never fires.
+
+`hook-lints-bad-notes` is the clearest: its prompt says *"Create a file named
+RELEASE_NOTES.md"* and it grants `[Read, Glob, Grep]`.
+
+This is not a planted trap. The facilitator note lists the traps and this is not among
+them. Lab 2 is 75 minutes and the eval suite is its final step.
+
+**And the grant is needed twice.** `Write`, `Bash` and `Edit` are gated at the runner as
+well as declared per case, so the command line needs `--allow-tools` too. The lab's hint
+did not have it. Measured, same case, same plugin, one flag apart:
+
+```
+--allow-tools Write   ->  score 1.00   hook-lints-bad-notes  100%  $0.06
+(no grant)            ->  score 0.00   "pattern not found in trace"  $0.14
+```
+
+Every student would have seen 0.00 and concluded their plugin was broken.
+
+Fixed: the five cases that need them now declare `Write`, and `Bash` where the command
+reads the git log. `ignores-unrelated` deliberately still has no `Write` — its grader
+asserts the file is *absent*, so granting it would weaken the one case that was correct.
+The lab's hint, its troubleshooting row and its facilitator note all now carry the flag.
+
+### Answered, by running it
+
+The lab said: *"Unconfirmed: whether the stderr of an exit-2 PostToolUse hook is fed to
+Claude. The `hook-lints-bad-notes` case exists to find out, so rehearse it."*
+
+It does. `✓ hook-message-reached-claude (weight 1): matched RELNOTES-LINT`, score 1.00.
+That is the documented behaviour confirmed in practice, for six cents.
+
+### `claude plugin validate` scored a correct student zero
+
+Real output has two halves: the plugin's own result, then a `Plugin directory checks
+for ...` section about submitting to the public catalog, which reports missing README,
+LICENSE and icon as `✘ Found 2 problems the plugin directory refuses a submission for`.
+**The lab's own answer key reports them.** The tool itself closes that section with
+*"These plugin directory checks do not change the result below."*
+
+The evidence row rejected any block containing the word `fail` — and that section
+contains the sentence *"To fail on problems the directory refuses a submission for..."*.
+So pasting genuine, correct output scored **0 of 8**.
+
+The row now splits the block at `Plugin directory checks for` and looks for
+`Found N errors` in the first half only, which is what a genuinely broken manifest
+prints there (`✘ Found 4 errors:`). Exit status is 0 in both cases and cannot be used.
+Three-way tested: real good output 8/8, real broken-plugin output 0/8, and the
+fabricated "it all failed" evidence from pass 3 still 0/8.
+
+Step 1 now warns students about the two halves, because every one of them will see that
+`✘`.
+
+### Still needs the class machine
+
+`bwrap` and `socat` do not exist on Windows, so **Lab 3's sandbox half and Lab 4's
+configuration 03 cannot be exercised here at all**. Those need an RVC instance, and they
+are the largest remaining untested surface.
+

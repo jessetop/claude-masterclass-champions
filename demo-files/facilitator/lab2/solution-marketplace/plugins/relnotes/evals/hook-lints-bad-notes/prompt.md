@@ -2,7 +2,7 @@
 description: The lint hook fires when a bad RELEASE_NOTES.md is written, and Claude sees its message.
 max_turns: 8
 timeout_seconds: 120
-allowed_tools: [Read, Glob, Grep]
+allowed_tools: [Read, Glob, Grep, Write]
 tags: [hook]
 ---
 

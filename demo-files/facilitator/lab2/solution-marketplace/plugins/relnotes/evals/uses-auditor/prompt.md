@@ -2,7 +2,7 @@
 description: The auditor subagent is used before the notes are final.
 max_turns: 25
 timeout_seconds: 500
-allowed_tools: [Read, Glob, Grep, Skill, Agent]
+allowed_tools: [Read, Glob, Grep, Skill, Agent, Write, Bash]
 tags: [core]
 ---
 
