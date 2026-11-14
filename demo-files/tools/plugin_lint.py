@@ -99,6 +99,23 @@ def frontmatter(path):
     return (parse_frontmatter(m.group(1)) if m else {}), bool(m)
 
 
+def fires_after_write(event, matcher):
+    """True when a hook wired like this runs after Claude writes a file.
+
+    The matcher is a regex matched against the tool name, so this asks the runtime's
+    question instead of looking for a spelling. Kept identical to score_lab2.py.
+    """
+    if event != "PostToolUse":
+        return False
+    pat = (matcher or "").strip()
+    if not pat or pat == "*":
+        return True
+    try:
+        return any(re.search(pat, t) for t in ("Write", "Edit", "MultiEdit"))
+    except re.error:
+        return bool(re.search(r"Write|Edit", pat))
+
+
 def main(argv):
     mk = None
     rest = list(argv)
@@ -142,16 +159,25 @@ def main(argv):
         if re.search(r"[A-Za-z]:[\\/]|/(home|Users)/", text):
             clean = False
             out("FAIL", "hooks/hooks.json contains a fixed absolute path. Use ${CLAUDE_PLUGIN_ROOT}.")
-        commands = [h.get("command", "") for ev in (data.get("hooks") or {}).values()
-                    for grp in ev for h in grp.get("hooks", [])]
+        wired = [(ev, grp.get("matcher", ""), h.get("command", ""))
+                 for ev, groups in (data.get("hooks") or {}).items()
+                 for grp in groups for h in grp.get("hooks", [])]
+        commands = [c for _, _, c in wired]
+        if commands and not any(fires_after_write(ev, ma) for ev, ma, _ in wired):
+            clean = False
+            out("FAIL", "No hook runs after a write. A format checker for a file Claude just wrote belongs on "
+                        "PostToolUse with no matcher or a matcher that matches Write and Edit; score_lab2.py gives "
+                        "the wiring and behavior points only to a hook on that event. Found: "
+                        + ", ".join(sorted({f"{ev} {ma or '(no matcher)'}" for ev, ma, _ in wired})))
         for c in commands:
             if "scripts/" in c and not re.search(PLUGIN_ROOT_VAR, c):
                 clean = False
                 out("FAIL", f"Hook command does not use ${{CLAUDE_PLUGIN_ROOT}}: {c}")
-            for m in re.finditer(PLUGIN_ROOT_VAR + r"/([\w./-]+)", c):
-                if not (root / m.group(1)).exists():
+            for m in re.finditer(PLUGIN_ROOT_VAR + r"[/\\]([\w./\\-]+)", c):
+                rel = m.group(1).replace("\\", "/")
+                if not (root / rel).exists():
                     clean = False
-                    out("FAIL", f"Hook points at {m.group(1)}, which does not exist in the plugin")
+                    out("FAIL", f"Hook points at {rel}, which does not exist in the plugin. score_lab2.py fails the same path: it grades the script the hook names, not a same-named file elsewhere in the plugin.")
         if commands and clean:
             out("ok", "Hook commands use the plugin path variable and point at real files")
     else:

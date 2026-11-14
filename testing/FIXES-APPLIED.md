@@ -213,3 +213,60 @@ material's scorers fail in both directions, and fixing one direction without tes
 other just moves the defect.** The next pass tightens each of them with a two-sided test —
 the new wrong answer must fail, and the original right answer must still pass.
 
+---
+
+## Pass 4 — the pendulum, and stopping it by hand (2026-11-14)
+
+A second agent pass closed 22 of the regressions from pass 3. It also made **8 checks
+swing back**: correct answers rejected again. Lab 4 came back CLEAN; Labs 2, 3, 5 and 6
+did not.
+
+That is the finding, more than any individual defect. **Keyword matching over student
+prose does not converge.** Each round moves the boundary and overshoots the other way,
+because a word list cannot tell "terminate the credential" (a fix verb) from "the owner
+was terminated" (an identification). Two automated rounds produced a net improvement and
+a fresh set of errors each time, so the rest was done by hand with an explicit two-sided
+test at each step.
+
+### Fixed here, each proven in both directions
+
+**Lab 5 — the word-count floor.** `has_reason` demanded five words after the break, so
+`6. Finding 5, hygiene only.` was rejected while a longer restatement of the finding's
+own name passed. Length was never the signal. The floor is gone; what remains is the
+rule that already worked — at least two words that are not filler, and FILLER holds the
+rank words, so `Finding 1 - highest` is a rank rather than a reason and still fails.
+Seven cases tested both ways, all correct, including one that now fails for a better
+reason than expected (no clause break at all).
+
+Scoring that row is also proportional now. One terse line used to cost half the row and
+make the student's own format check unreachable, which is a cliff of exactly the kind
+this material keeps producing.
+
+**Lab 6 — the clause rule.** `occurs_asserted` treated any negation in the sentence as
+governing the fact, so `Avoid tabs and use 4 spaces` read as a ban on 4 spaces. A
+negation now governs only its own clause, with a comma, a spaced dash, or a coordinating
+conjunction ending it. The severe case still fails correctly:
+`Run the tests with nosetests, not python3 -m pytest -q` does **not** count as keeping
+the pytest fact, which is the lab's headline trap resolved the wrong way.
+
+Two real bugs surfaced doing it. The double-negative guard was dead code — `neg.end()`
+pointed past a 30-character lookbehind tail, so the string it searched was always empty —
+and the first repair attempt doubled its backslashes inside an `r"..."` literal, turning
+`` into a literal backslash and silently disabling every word boundary. Both are now
+covered by the eight-case test.
+
+**Stale bytecode.** Four `__pycache__` directories were tracked, one of them shipping a
+`.pyc` older than the `.py` it shadowed, in the student-facing tree. Removed and ignored.
+
+### Left open, deliberately
+
+The remaining items are vocabulary arguments rather than defects — `no longer` accepting
+hygiene prose, `left` matching "left the key in .env", a `terminat` adjacency firing on
+credential termination. Each could be patched and each patch would reopen something else.
+
+**The real recommendation is a design change, not another patch.** Labs 5 and 6 score
+prose that a facilitator reads anyway. Their rubrics already say the written account is
+facilitator-judged. These keyword rows should report rather than score — print what they
+found and let the human decide — which is what the Lab 2 evidence rows already say about
+themselves. That is a course-owner decision, so it is recorded here rather than taken.
+

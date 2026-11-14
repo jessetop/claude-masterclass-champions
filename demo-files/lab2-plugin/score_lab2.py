@@ -8,9 +8,16 @@ Scores 100 points:
     manifest 5, hook wiring 20, hook behavior 15, command 20, agent 10, marketplace 10,
     evidence file 20 (validate output 8, details/always-on cost 6, eval summary 6).
 The evidence file is a text file where you paste the output of `claude plugin validate`,
-`claude plugin details relnotes` and `claude plugin eval` (see the lab). This scorer only checks
-that the evidence is there and plausible: it cannot prove the commands ran, so the facilitator
-confirms the eval run from a screen or a result file.
+`claude plugin details relnotes` and `claude plugin eval` (see the lab). Each row reads only the
+block pasted under its own `claude plugin ...` line, with no fallback to the rest of the file.
+This scorer only checks that the evidence is there and plausible: it cannot prove the commands
+ran, so the facilitator confirms the eval run from a screen or a result file.
+
+Only a hook that runs after a write is a candidate for the wiring and behavior rows, and only
+the script path the hook actually names is tested, so this scorer and tools/plugin_lint.py pass
+and fail the same hooks.json. The 20 command points are graded on commands/release-notes.md and
+the 10 agent points on the agent whose frontmatter name is changelog-auditor, so another file in
+those folders can neither earn nor lose them.
 
 The hook is exercised with a full PostToolUse event on standard input, with the documented
 fields: hook_event_name, session_id, transcript_path, cwd, tool_name, tool_input, tool_response.
@@ -29,6 +36,7 @@ SECTIONS = ("Breaking changes", "Features", "Fixes", "Other changes")
 WRITE_TOOLS = {"Edit", "Write", "Bash", "NotebookEdit"}
 # Accept both ${CLAUDE_PLUGIN_ROOT} and $CLAUDE_PLUGIN_ROOT: both expand the same way.
 PLUGIN_ROOT_VAR = r"\$\{?CLAUDE_PLUGIN_ROOT\}?"
+SCRIPT_SUFFIX = re.compile(r"\.(?:py|sh|bash|js|mjs|cjs|ts|rb|pl|ps1)$")
 SCRIPT_IN_COMMAND = re.compile(r"[\w./${}\\-]+\.(?:py|sh|bash|js|mjs|cjs|ts|rb|pl|ps1)\b|scripts/")
 FIXED_PATH = re.compile(r"[A-Za-z]:[\\/]|/(home|Users)/")
 # A TODO the author left for themselves, not a mention of the word (the hook lints for TODO,
@@ -147,6 +155,16 @@ ONLY_NOTES_FILE = re.compile(r"""(?ix)
 """)
 
 
+# "read the git log for that range" is the starter's own to-do note, not an instruction a
+# model can follow. The row asks for the invocation, which is what its advice line and the
+# lab's hint already ask for: a git log/describe call carrying a flag, a `..` range, a
+# placeholder or a format string.
+GIT_RANGE_CMD = re.compile(r"""(?ix)
+    git\s+(?:log|shortlog|rev-list|describe)\b [^\n]{0,80}?
+      (?: --[a-z0-9-]+ | \.\. | <[^\n>]{1,24}> | %[a-zA-Z] | \$ARGUMENTS )
+""")
+
+
 def grade_command(text, fm):
     """The eight command predicates, for one candidate file, in rubric order."""
     body = text.split("---", 2)[-1]
@@ -154,7 +172,7 @@ def grade_command(text, fm):
         TODO_MARKER.search(text) is None,
         len(fm.get("description", "")) >= 40,
         "RELEASE_NOTES.md" in text and "changelog-auditor" in text,
-        bool(re.search(r"git\s+(log|shortlog|rev-list|describe)", body, re.I))
+        bool(GIT_RANGE_CMD.search(body))
         and bool(re.search(r"\brange\b|\bsince\b|\.\.|latest tag|previous tag|\bHEAD\b", body, re.I)),
         all(label_position(text, s) >= 0 for s in SECTIONS),
         sections_in_order(text),
@@ -163,32 +181,75 @@ def grade_command(text, fm):
     ]
 
 
-def pick(files, prefer_name, scorer):
-    """Grade the artifact the lab asks for, not whichever file sorts first."""
-    ordered = sorted(files, key=lambda p: (p.name != prefer_name, p.name))
-    graded = [(p, scorer(p)) for p in ordered]
-    return max(graded, key=lambda g: sum(1 for x in g[1] if x))
+def pick(files, declared, scorer):
+    """Grade the artifact the plugin declares, not whichever file scores best.
+
+    `declared` is the subset of files that the plugin itself identifies as the one the lab
+    asks for: the command file named release-notes.md, the agent whose frontmatter name is
+    changelog-auditor. If one of those is present it is graded and nothing else is, so a
+    scratch file dropped into commands/ cannot carry the row while the real component is
+    still a TODO. Only when the plugin declares nothing of the kind does the scorer fall
+    back to the best candidate, and it says so.
+    """
+    if declared:
+        p = sorted(declared)[0]
+        return p, scorer(p), True
+    graded = [(p, scorer(p)) for p in sorted(files)]
+    best = max(graded, key=lambda g: sum(1 for x in g[1] if x))
+    return best[0], best[1], False
 
 
 def resolve_script(root, cmd):
     """The script a hook command runs, for a command that locates it inside the plugin.
 
     A command with a path fixed to one machine resolves to nothing, because that is the
-    trap the wiring row is about. A command that uses the variable but puts the path
-    together some other way (`cd "${CLAUDE_PLUGIN_ROOT}" && python3 scripts/x.py`) is
-    resolved by the file name, so a style choice does not zero the behavior points.
+    trap the wiring row is about.
+
+    When the command spells out a script path under the plugin root
+    (`${CLAUDE_PLUGIN_ROOT}/scripts/x.py`), that path is the answer and nothing else is:
+    if the file is not there the hook is broken, which is the FAIL plugin_lint.py prints
+    for the same tree, so the scorer must not rescue it by finding a same-named file in
+    another folder. Only a command that uses the variable without joining a script path
+    to it (`cd "${CLAUDE_PLUGIN_ROOT}" && python3 scripts/x.py`) is resolved by file
+    name, so that style choice does not zero the behavior points.
     """
     if not re.search(PLUGIN_ROOT_VAR, cmd) or FIXED_PATH.search(cmd):
         return None, None
+    declared = []
     for m in re.finditer(PLUGIN_ROOT_VAR + r"[/\\]([\w./\\-]+)", cmd):
         rel = m.group(1).replace("\\", "/")
-        if (root / rel).exists():
+        if SCRIPT_SUFFIX.search(rel):
+            declared.append(rel)
+    for rel in declared:
+        if (root / rel).is_file():
             return root / rel, rel
+    if declared:
+        return None, declared[0]
     for m in re.finditer(r"([\w.-]+\.(?:py|sh|bash|js|mjs|cjs|rb|pl|ps1))", cmd):
         hits = sorted(p for p in root.rglob(m.group(1)) if p.is_file())
         if len(hits) == 1:
             return hits[0], hits[0].relative_to(root).as_posix()
     return None, None
+
+
+def fires_after_write(event, matcher):
+    """True when a hook wired like this actually runs after Claude writes a file.
+
+    The matcher is a regex matched against the tool name, so this asks the question the
+    runtime asks rather than looking for a spelling: an empty matcher fires on every tool,
+    `Write|Edit` and `.*` fire on a write, `Read` and `Bash(git push:*)` do not. A hook on
+    any other event (SessionStart, PreToolUse, Stop) cannot be a format checker for a file
+    that has just been written, so it is not a candidate for the behavior rows.
+    """
+    if event != "PostToolUse":
+        return False
+    pat = (matcher or "").strip()
+    if not pat or pat == "*":
+        return True
+    try:
+        return any(re.search(pat, t) for t in ("Write", "Edit", "MultiEdit"))
+    except re.error:
+        return bool(re.search(r"Write|Edit", pat))
 
 
 def runner_for(cmd, script):
@@ -246,6 +307,14 @@ def tree_signature(base):
 
 
 CLAUDE_PLUGIN_CMD = re.compile(r"claude[^\n]{0,60}plugin\s+(validate|details|eval)", re.I)
+# A block that says the command was not run scores nothing, whatever result it then claims.
+NOT_RUN = re.compile(r"""(?ix)
+      fail\w*\s+to\s+(even\s+)?(start|load|run)
+    | no\s+cases\s+(ran|started)
+    | (could\s+not|couldn't|cannot|can't)\s+(even\s+)?(run|start|load)
+    | (did\s*n[o']t|have\s*n[o']t|has\s*n[o']t|never)\s+(actually\s+|yet\s+)?(run|ran|execute\w*)\b
+    | not\s+(actually\s+)?(run|ran|executed)\s+(it|this|that|yet)\b
+""")
 
 
 def command_blocks(text):
@@ -306,7 +375,11 @@ def main(argv):
     except (OSError, ValueError):
         pass
     commands = [c for _, _, c in entries]
-    award(5, bool(commands), "hooks/hooks.json is valid and defines a command hook", "write hooks/hooks.json with a PostToolUse command hook")
+    write_entries = [e for e in entries if fires_after_write(e[0], e[1])]
+    award(5, bool(write_entries), "hooks/hooks.json defines a command hook that runs after a write",
+          "a format checker has to run on the event that follows a write: PostToolUse, with no matcher or a "
+          "matcher that matches Write and Edit. Found: %s"
+          % (", ".join(sorted({"%s %s" % (ev, ma or "(no matcher)") for ev, ma, _ in entries})) or "no command hook at all"))
 
     script_cmds = [c for c in commands if SCRIPT_IN_COMMAND.search(c)]
     fixed = [c for c in commands if FIXED_PATH.search(c)]
@@ -315,21 +388,20 @@ def main(argv):
           "every hook command that names a script must locate it with ${CLAUDE_PLUGIN_ROOT}/... (unbraced $CLAUDE_PLUGIN_ROOT is fine); replace any /home/<user>/... or C:\\... path"
           + (" -- fixed path in: %s" % fixed[0] if fixed else ""))
 
-    def rank(e):
-        event, matcher, _ = e
-        if event == "PostToolUse" and (not (matcher or "").strip() or re.search(r"Write|Edit", matcher or "")):
-            return 0
-        return 1 if event == "PostToolUse" else 2
-
-    script = rel = None
+    # Only a hook that fires after a write can be the format checker, so only those are
+    # candidates: a working script wired to SessionStart is not this plugin's linter.
+    script = rel = missing = None
     picked_from = ""
-    for event, matcher, cmd in sorted(entries, key=rank):
+    for event, matcher, cmd in write_entries:
         script, rel = resolve_script(root, cmd)
         if script:
             picked_from = "%s %s" % (event, matcher or "(no matcher)")
             hook_cmd = cmd
             break
-    award(7, script is not None, "The hook points at a script that exists inside the plugin",
+        missing = missing or rel
+    award(7, script is not None, "The after-a-write hook points at a script that exists inside the plugin",
+          ("the hook names %s, and there is no such file in the plugin (plugin_lint.py FAILs the same path). "
+           "Fix the path or move the script there" % missing) if missing else
           "the path after ${CLAUDE_PLUGIN_ROOT}/ must name a file that exists in the plugin, for example scripts/lint_notes.py")
 
     # 3 hook behavior (15)
@@ -356,8 +428,10 @@ def main(argv):
     # 4 command (20)
     cmd_files = sorted((root / "commands").glob("*.md")) if (root / "commands").exists() else []
     if cmd_files:
-        cmd_file, got = pick(cmd_files, "release-notes.md", lambda p: grade_command(*reversed(frontmatter(p))))
-        note("command graded: commands/%s" % cmd_file.name)
+        cmd_file, got, declared = pick(cmd_files, [p for p in cmd_files if p.name == "release-notes.md"],
+                                       lambda p: grade_command(*reversed(frontmatter(p))))
+        note("command graded: commands/%s%s" % (cmd_file.name, "" if declared else
+             " (no commands/release-notes.md, so the closest file in commands/ was graded; the lab asks for /relnotes:release-notes)"))
         no_todo, described, names, ranged, present, ordered, no_invent, only_notes = got
         award(3, no_todo, "Command has no leftover TODO", "a line such as 'TODO: write the command body' is still there; write the body (naming TODO as text the hook rejects is fine)")
         award(3, described, "Command description is specific (40+ characters)", "say what it does and when to use it, in the frontmatter `description` (a folded `>-` block or one line both work)")
@@ -378,11 +452,13 @@ def main(argv):
             allowed, denied = tool_set(fm.get("tools")), tool_set(fm.get("disallowedTools"))
             read_only = (bool(allowed) and not (allowed & WRITE_TOOLS)) or (bool(denied) and WRITE_TOOLS <= denied)
             return [fm.get("name") == "changelog-auditor", read_only, allowed, denied]
-        agent_file, got = pick(agent_files, "changelog-auditor.md", lambda p: grade_agent(p)[:2])
+        auditors = [p for p in agent_files if frontmatter(p)[0].get("name") == "changelog-auditor"]
+        agent_file, got, declared = pick(agent_files, auditors, lambda p: grade_agent(p)[:2])
         is_auditor, read_only = got
         fm, _ = frontmatter(agent_file)
         allowed, denied = tool_set(fm.get("tools")), tool_set(fm.get("disallowedTools"))
-        note("agent graded: agents/%s" % agent_file.name)
+        note("agent graded: agents/%s%s" % (agent_file.name, "" if declared else
+             " (no agent is named changelog-auditor, so the closest file in agents/ was graded; the command calls that name)"))
         award(10, read_only, "The checking agent has read-only tools",
               "tools = %s, disallowedTools = %s. Either list only read tools (`tools: Read, Grep, Glob`) or deny every write tool (`disallowedTools: %s`)"
               % (sorted(allowed), sorted(denied), ", ".join(sorted(WRITE_TOOLS))))
@@ -421,23 +497,30 @@ def main(argv):
     text = ev.read_text(encoding="utf-8", errors="replace") if ev and ev.exists() else ""
 
     blocks = command_blocks(text)
+    # Each row reads only the block pasted under its own `claude plugin ...` line. There is
+    # deliberately no whole-file fallback: without it the three rows collapse into one
+    # keyword search over the file, and a sentence claiming a result scores the same as the
+    # result. The lab says this, in Step 6.
     vb = blocks["validate"]
     neutral = re.sub(r"(?i)\b(0|no|zero)\s+(error|errors|failure|failures|problem|problems)\b", " ZEROERRORS ", vb)
     good_run = re.search(r"(?i)\b(passed|passes|valid|success|successful|succeeded|ok|ZEROERRORS)\b", neutral)
     bad_run = re.search(r"(?i)\bnot ok\b|\b(error|errors|fail|failed|fails|failing|invalid|broken|cannot|could not|traceback)\b", neutral)
-    award(8, bool(vb.strip()) and bool(good_run) and not bad_run, "Evidence: validate output pasted and it reports success",
-          "paste the `claude plugin validate` output showing it passed (0 errors). If it still reports errors, fix them and run it again"
-          + (" -- the pasted run still reports %r" % bad_run.group(0) if bad_run else ""))
+    not_run = NOT_RUN.search(vb)
+    award(8, bool(vb.strip()) and bool(good_run) and not bad_run and not not_run, "Evidence: validate output pasted and it reports success",
+          "paste the `claude plugin validate` output under a `claude plugin validate` line, showing it passed (0 errors). If it still reports errors, fix them and run it again"
+          + (" -- the pasted run still reports %r" % bad_run.group(0) if bad_run else "")
+          + (" -- the block says the command was not run (%r)" % not_run.group(0) if not_run else ""))
 
-    db = blocks["details"] or text
+    db = blocks["details"]
     cost = re.search(r"(?i)(always[- ]on|projected token|token cost|context cost)[^\n]{0,80}?\d", db) or re.search(r"(?i)\b\d[\d,._]*\s*k?\s*tokens\b", db)
-    award(6, bool(cost), "Evidence: plugin details output with the projected token cost pasted",
-          "paste `claude --plugin-dir ~/plugins/relnotes plugin details relnotes` including the always-on token figure, with its number")
+    award(6, bool(cost) and not NOT_RUN.search(db), "Evidence: plugin details output with the projected token cost pasted",
+          "paste `claude --plugin-dir ~/plugins/relnotes plugin details relnotes`, the command line included, with the always-on token figure and its number under it"
+          + ("" if db.strip() else " -- no `claude plugin details` line found in the evidence file"))
 
-    eb = blocks["eval"] or text
+    eb = blocks["eval"]
     figure = re.search(r"(?i)\b\d+\s*(?:/|of|out of)\s*\d+\b|\b\d+\s*(?:cases?|runs?|tests?)\b|\b(?:pass(?:ed)?|fail(?:ed)?)\s*[:=]?\s*\d+", eb)
     meta = re.search(r"(?i)aggregate-result|report\.html|results/|threshold|pass rate|--runs|\bruns?\s*[:=]?\s*\d+|max-cost|cost\b[^\n]{0,20}\$?\d|\$\s*\d", eb)
-    never_ran = re.search(r"(?i)fail\w*\s+to\s+(even\s+)?(start|load|run)|no cases (ran|started)|could not run", eb)
+    never_ran = NOT_RUN.search(eb)
     award(6, bool(figure) and bool(meta) and not never_ran, "Evidence: eval run summary pasted, with the case results and the run settings",
           "paste the summary of `claude plugin eval ... --runs N --max-cost-usd C`: the per-case results and the aggregate-result or report path. "
           "A case that failed is fine to report, a suite that never ran is not")

@@ -16,11 +16,11 @@
 
 1. **Measure before (about 10 minutes).** Goal: three numbers recorded.
    - In `$FILES/lab6-context/shopkit`, start `claude` and run `/context`. Record the startup total and the `CLAUDE.md` line in `measure.csv` as the tool shows them (tokens or percent). Then run `claude --plugin-dir ../shopkit-plugin plugin details shopkit-helpers` and record the projected token cost.
-   - Hints: copy the numbers exactly as displayed and do not convert them.
+   - Hints: copy the numbers exactly as displayed and do not convert them. Fill the six rows that ship in `measure.csv`; you may add rows of your own below them, but an added row does not stand in for a shipped row you left blank.
 
 2. **Trim `CLAUDE.md` (about 20 minutes).** Goal: a `CLAUDE.md` at least 40 percent shorter that keeps what Claude needs.
    - Acceptance criteria: the five facts that matter survive (the test command, never committing `.env`, integer cents for money, the public API path, and the indentation rule); stale and duplicated instructions are gone; no motivational text remains.
-   - Hints: for each line, ask whether Claude would behave differently without it. Two of the instructions contradict each other, and some describe a tool that no longer exists. A rule that must persist belongs in the project-root `CLAUDE.md`.
+   - Hints: for each line, ask whether Claude would behave differently without it. Two of the instructions contradict each other, and some describe a tool that no longer exists. A rule that must persist belongs in the project-root `CLAUDE.md`. When two instructions contradict each other, keep the one that is still true: the checker reads a line as still prescribing the old tool when the old tool is what it tells Claude to run, so "run the tests with `nosetests`, not `python3 -m pytest -q`" fails the stale row and does not count as keeping the test command either. Deleting the stale line is enough; naming it in order to retire it ("use `pytest`, not `nosetests`"; "Python 2 support was dropped") also passes.
 
 3. **Trim the plugin (about 15 minutes).** Goal: every command and agent description is short and still says when to use it.
    - Acceptance criteria: each description is 200 characters or fewer (a lab rule of thumb and not a product limit), at least 40 characters, and still names its topic (price, stock, refund, cart).
@@ -32,7 +32,7 @@
 
 5. **Write two rules (about 10 minutes).** Goal: two rules for your own team in `RULES-LEARNED.md`.
    - Acceptance criteria: exactly two numbered rules, each starting with a verb and ending with a "because" clause that points at something you measured.
-   - Hints: `1.` or `1)` both count, and a rule may wrap onto an indented second line. Put evidence or notes under a heading below the two rules so they are not read as a third rule.
+   - Hints: `1.` or `1)` both count, and a rule may wrap onto an indented second line. Put evidence or notes under a heading below the two rules, and write them as prose or `-` bullets: the checker reads any numbered line with a "because" clause as a rule, wherever in the file it sits.
 
 6. **Check it.** From `$FILES/lab6-context`, run `python3 check_lab6.py`.
 
@@ -43,6 +43,9 @@
 - You cut the facts that matter: the checker names the missing ones, and each one is worth 3 of the 15 points. Wording is yours: the checker accepts any phrasing that keeps the fact.
 - The numbers did not change: compare like with like. `/context` also counts other files that loaded.
 - A description is shorter and the command stopped being chosen: add the trigger back in fewer words.
+- You kept the contradiction and picked the wrong side: a line that tells Claude to run `nosetests` instead of `pytest` scores zero on both the stale row and the test-command fact. Keep the instruction that is still true.
+- `measure.csv` reports a row as blank although you filled in six values: the checker matches the six rows it shipped (a `/context` total, a `CLAUDE.md` line and a plugin token cost, before and after), and names the one still missing. Extra rows of your own are fine but do not replace one of the six.
+- A third numbered line is read as a third rule: it has a "because" in it. Turn evidence notes into `-` bullets or prose.
 - You wrote rules with no measurement behind them: change the because clause to what you saw.
 - You quote a number from memory in your rules: remove it, or link to the documentation.
 

@@ -16,10 +16,32 @@ import sys
 #   label  - what the issue is, printed next to the score
 #   ident  - identification: the block must match ALL of these
 #   why    - identification, second half: the block must match ANY of these
-#            (the evidence that the student saw *this* problem and not a neighbouring one)
+#            (the evidence that the student saw *this* problem and not a neighbouring one).
+#            This list carries no fix verbs: a word that can only appear in the Fix line
+#            proves nothing about what the student identified.
 #   fix    - acceptable fix: ANY of these, matched against the Fix and Rotation step
 #            fields only, so a fix word borrowed from "What is wrong" earns nothing
 #   loc    - location: ANY of these, matched against the whole block
+# C4 and C6 are the two findings that need the join with org/hr_departures.csv, so
+# their identification has to show the student saw a *person who left*: the departure,
+# the departure date, or the HR file itself. Fix verbs ("terminate the key", "do not
+# leave a key without an expiry") and the 180-day rotation number are not evidence of
+# that join, so they are deliberately absent. Employment termination counts; ending a
+# credential does not, hence the two adjacency forms rather than a bare "terminat".
+# "left" and "retire" are the same trap: a person leaves, but a key is also "left
+# without an expiry" and "retired", so bare "left" is person-scoped and "retire" is
+# gone (the sample answer's own Rotation step says "retire it").
+PERSON = r"\b(?:who|she|he|they|their|his|her|owner|employee|person|staff|contractor|nakamura|alvarez)\b"
+DEPARTED = (r"depart|former|ex-?employ|no longer|resign|\bquit\b|offboard"
+            r"|hr_departures"
+            r"|" + PERSON + r"[^\n]{0,25}\blast (?:working )?day\b"
+            r"|\blast (?:working )?day of (?:employ|work)"
+            r"|" + PERSON + r"[^\n]{0,25}\bleft\b"
+            r"|\b(?:has|have|had|since) left\b"
+            r"|\bleft\b[^\n]{0,20}(?:the company|the org|the team|the business|harbor|on 20|in 20)"
+            r"|(?:employ\w*|staff|contractor|the owner)[^\n]{0,25}terminat"
+            r"|terminat\w*[^\n]{0,20}(?:employ\w*|staff|contractor)")
+
 ISSUES = {
     "C1": ("Key in a settings file (billing-service .claude/settings.json env.ANTHROPIC_API_KEY)",
            [r"billing"], [r"settings\.json|settings file|settings\.local\.json|\.claude/settings"],
@@ -34,7 +56,7 @@ ISSUES = {
            [r"per-repo|per repo|one .*per repo|repository-scoped|repository scoped|own secret|separate"], [r"ci_secrets_inventory|claude-review\.yml"]),
     "C4": ("Long-lived key owned by a departed person (cred-101, p.nakamura)",
            [r"cred-101|nakamura"],
-           [r"left|leave|depart|former|ex-?employ|no longer|resign|terminat|offboard|last day|2026-06-30|30 june|june 2026|180"],
+           [DEPARTED + r"|2026-06-30|30 june|june 2026"],
            [r"revoke|replace|re-?issue|team-owned|team owned|team identity|expiry|expire|offboarding"],
            [r"credentials_inventory|hr_departures"]),
     "C5": ("No deny rules for .env (inventory-service)",
@@ -45,7 +67,7 @@ ISSUES = {
            [r"deny"], [r"inventory-service.*settings|settings\.json|\.env"]),
     "C6": ("Personal key of a departed person in .env (cred-104, j.alvarez)",
            [r"cred-104|alvarez"],
-           [r"left|leave|depart|former|ex-?employ|no longer|resign|terminat|personal|individual|2026-03-15|15 march|march 2026"],
+           [DEPARTED + r"|2026-03-15|15 march|march 2026"],
            [r"revoke|rotate|replace|remove"], [r"\.env|credentials_inventory"]),
 }
 
@@ -88,19 +110,44 @@ def priority_items(text):
     return [ln for ln in section(text, "Priority order").splitlines() if re.match(r"\s*\d+[.)]\s+\S", ln)]
 
 
+# Words that only restate a finding's name or its rank. A "reason" built out of
+# nothing but these is not a reason, which is why the length of a line cannot
+# decide the question: "cred-101 service account key in credentials_inventory"
+# is long and says nothing about why it is first.
+FILLER = set("""a an the and or of in on to by for with as at is are was were be been
+has have had it its this that these those there here also still just very more most
+less but if while when than then so too own my our we they them i you
+first second third fourth fifth sixth highest high higher top biggest bigger largest
+greatest worst priority prioritized prioritised urgent important critical severe
+severity rank ranked order next later last one ones number position place spot slot
+finding findings issue issues item items problem problems thing things""".split())
+
+CONNECTIVE = r"because|since|reason|so that|as it|as the|which|due to|given|in order|so"
+
+
 def has_reason(line):
     """True when a priority line says *why* it sits where it does.
 
     Shared with lab5-audit/check_findings_format.py: keep the two in step.
-    Accepts a connective ("because", "since", ...), a punctuation break after the
-    finding name (", " / " - " / ": "), or a substantial clause of plain prose.
+    The reason is the clause after the finding's name, introduced either by a
+    connective ("because", "since", ...) or by the punctuation that sets it off
+    (", " / " - " / ": " / " (" / ". "). The break is not itself the reason, so the
+    clause after it must carry at least two words that are not filler - FILLER holds
+    the rank words ("highest", "urgent", "critical"), so "Finding 1 - highest" is a
+    rank, not a reason, and fails.
+
+    There is deliberately NO word-count floor. An earlier version demanded five
+    words and rejected "6. Finding 5, hygiene only." - a terse but genuine reason -
+    while accepting a longer restatement of the finding's own name. Length is not
+    the signal; saying something beyond the rank is.
     """
     body = re.split(r"^\s*\d+[.)]\s+", line, maxsplit=1)[-1].strip()
-    if re.search(r"because|since|reason|so that|\bso\b|as it|as the|which|due to|given|in order", body, re.I):
-        return True
-    if re.search(r"[:;,\u2014]|\s[-\u2013]\s", body):
-        return True
-    return len(body) >= 40
+    parts = re.split(r"\b(?:%s)\b|[:;,\u2014(\[]|\s[-\u2013]\s|\.\s+" % CONNECTIVE,
+                     body, maxsplit=1, flags=re.I)
+    if len(parts) < 2:
+        return False
+    words = re.findall(r"[A-Za-z][A-Za-z'\u2019]*", parts[1])
+    return sum(1 for w in words if w.lower() not in FILLER) >= 2
 
 
 def main():
@@ -133,7 +180,9 @@ def main():
     print("  clean repository (payments-gateway) not reported as defective: %d/8" % clean)
 
     pr = priority_items(text)
-    pts = 8 if len(pr) >= 4 and all(has_reason(ln) for ln in pr) else (4 if len(pr) >= 3 else 0)
+    # Proportional, not all-or-nothing: one terse line used to cost half the row.
+    with_reason = sum(1 for ln in pr if has_reason(ln))
+    pts = round(8 * with_reason / len(pr)) if len(pr) >= 4 else (4 if len(pr) >= 3 else 0)
     total += pts
     print("  prioritized with reasons (suggested top: cred-101 departed owner, then the shared CI key): %d/8" % pts)
 

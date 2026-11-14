@@ -14,6 +14,15 @@ PATH_TO_PROJECT. So `.`, `./`, `~/work/report-archiver` and the absolute path of
 you are checking all count as the project folder, and `~`, `/`, `..` and `/home/you` do not.
 Point PATH_TO_PROJECT at the project the settings file belongs to, or the comparison is meaningless.
 
+Hook scripts are judged on the code that would run, not on the words in the file. Comments and
+Python docstrings are blanked before the network pattern is applied, so prose such as "append all
+tool requests to a local audit file" is not read as a network call. Commenting the sending lines
+out is therefore accepted as "does not reach the network" - it does not - but a hook left pointing
+at a script with no code left to run fails this checklist anyway, for the same reason as a hook
+pointing at a deleted script: the fix the lab asks for is removing the hook entry, and an entry
+aimed at a file with nothing in it is the same unreviewed entry wearing a different hat. Code the
+file does not show - exec() or eval() of a string - fails too, because the checker cannot review it.
+
 Unconfirmed items (not in the class facts file, so treated as scenario conventions):
   - The exact entry format for sandbox.excludedCommands. This checker passes it when the list is empty or absent.
   - How a relative path in sandbox.filesystem is resolved. This checker resolves relative entries
@@ -31,6 +40,9 @@ APPROVED_DOMAINS = {"pypi.org", "files.pythonhosted.org"}
 APPROVED_SERVERS = {"docs-search", "ticket-bridge"}
 BROAD_WRITE = {"~", "/", "*", "..", "../", "$home", "${home}", "%userprofile%", "~/", "**", "/*", ""}
 NETWORK_WORDS = re.compile(r"urllib|requests|http\.client|socket|curl|wget|urlopen")
+# exec("...") / eval("...") / compile("..."): code built at run time, which no reader of the
+# file can review. "re.compile(" and "literal_eval(" are not matched (a name part precedes them).
+RUNTIME_CODE = re.compile(r"(?<![\w.])(?:exec|eval|compile)\s*\(")
 SCRIPT_EXTS = (".py", ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".rb", ".pl", ".ps1")
 # attack_simulation.py attempt 2 connects here by default (--net-target changes it).
 NET_TARGET = "example.com"
@@ -246,9 +258,13 @@ def main():
 
     net_hooks = []
     unreadable = []
+    unreviewable = []
+    inert = []
     for cmd in hook_commands(cfg):
         if NETWORK_WORDS.search(cmd):
             net_hooks.append("the hook command itself: %s" % cmd.strip())
+        elif RUNTIME_CODE.search(cmd):
+            unreviewable.append("the hook command itself: %s" % cmd.strip())
         for token in re.findall(r'"[^"]*"|\'[^\']*\'|\S+', cmd):
             token = token.strip('"').strip("'")
             if not token or token.startswith("-") or token.startswith(">"):
@@ -263,18 +279,37 @@ def main():
                 unreadable.append(token)
                 continue
             try:
-                if NETWORK_WORDS.search(code_text(path)):
-                    net_hooks.append(token)
+                body = code_text(path)
             except OSError:
                 unreadable.append(token)
+                continue
+            if NETWORK_WORDS.search(body):
+                net_hooks.append(token)
+            elif not is_script:
+                # a data file the command happens to name (a log, a template): read for network
+                # calls, but "no code in it" and "builds code at run time" say nothing about it
+                continue
+            elif RUNTIME_CODE.search(body):
+                unreviewable.append(token)
+            elif not body.strip():
+                inert.append(token)
     hook_detail = []
     if net_hooks:
         hook_detail.append("network calls in: %r" % net_hooks)
     if unreadable:
         hook_detail.append("cannot read the script this hook runs: %r - if the script is gone, remove "
                            "the hook entry too; if it is still wanted, restore it so it can be reviewed" % unreadable)
-    check("hooks: no hook command or hook script reaches the network (hooks run OUTSIDE the sandbox)", 4,
-          not net_hooks and not unreadable, "; ".join(hook_detail))
+    if inert:
+        hook_detail.append("the script this hook runs has no code left to run: %r - commenting the body "
+                           "out leaves the hook entry behind, pointing at a file nobody has a reason to "
+                           "keep; remove the hook entry as well" % inert)
+    if unreviewable:
+        hook_detail.append("this hook builds its code at run time (exec/eval), so what it does cannot be "
+                           "read from the file: %r - write the code out in the open or remove the hook "
+                           "entry" % unreviewable)
+    check("hooks: no hook reaches the network, and every hook that stays runs a script that can be read "
+          "and reviewed (hooks run OUTSIDE the sandbox)", 4,
+          not net_hooks and not unreadable and not inert and not unreviewable, "; ".join(hook_detail))
 
     total = 0
     print("PART A: static checklist")
@@ -316,6 +351,10 @@ def main():
         else:
             inject_why = ("will succeed: app.py still builds a shell command, and a sandbox does not "
                           "stop a command inside the working directory")
+    elif RUNTIME_CODE.search(app_src):
+        inject_why = ("unclear: app.py builds its code at run time (exec/eval), so this checker cannot "
+                      "see what reaches a shell. Attempt 4 is scored live - run the attack script and "
+                      "record what happens")
     else:
         inject_why = "no shell command built from the name found in app.py"
     print("PREDICTED attack outcomes (a prediction, not an observation)")

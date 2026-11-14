@@ -9,7 +9,10 @@ Column values:
   vector           readme | issue | tool_result
   defense          the configuration you ran: 01_default | 02_deny_rules |
                    03_sandbox_network | 04_narrowed_tools. The number on its own
-                   (01, 02, 03, 04) is accepted.
+                   (01, 02, 03, 04) is accepted, and so is the name on its own
+                   (default, deny rules, sandbox, narrowed tools). The number has
+                   to lead the cell: in `default (2nd run)` the configuration is
+                   01, named by `default`, and the 2 is not a configuration.
   model_version    the real version string, as /status reports it
   permission_mode  the mode you ran in, for example default or acceptEdits
   model_flagged    yes | no
@@ -30,6 +33,13 @@ REQUIRED_COLS = ["run", "vector", "defense", "model_version", "permission_mode",
 # stopped_by value -> the only configuration that control exists in
 NEEDS = {"deny_rule": "2", "sandbox": "3", "narrowed_tools": "4"}
 CONFIGS = {"1": "01_default", "2": "02_deny_rules", "3": "03_sandbox_network", "4": "04_narrowed_tools"}
+# the four configurations are a closed set: the words each one is named by
+CONFIG_WORDS = (("1", ("default",)),
+                ("2", ("deny",)),
+                ("3", ("sandbox", "allowlist", "network")),
+                ("4", ("narrow",)))
+# a leading configuration number: 01, 1, 01_default, config 02, configuration 3
+CONFIG_NUMBER = re.compile(r"(?:(?:config|configuration|defense|defence|cfg|conf)_)?0*([1-4])(?![0-9a-z])")
 
 FLAGGED = {"yes": "yes", "y": "yes", "true": "yes", "flagged": "yes", "named": "yes",
            "no": "no", "n": "no", "false": "no", "not_flagged": "no"}
@@ -62,19 +72,22 @@ def vector_of(value):
 
 
 def defense_num(value):
-    """Return '1'..'4' for any spelling of a configuration, or None."""
+    """Return '1'..'4' for a cell that names one of the four configurations, or None.
+
+    Two ways to name one, both of which the lab text and apply_config.sh use: the
+    configuration number at the front of the cell (01, 1, 01_default, 02_deny_rules.json,
+    config 02), or the configuration's name anywhere in it (default, deny rules, sandbox
+    with a network allowlist, narrowed tools, defense_configs/03_sandbox_network.json).
+    A digit that merely appears somewhere in the cell is not a configuration number:
+    `default (2nd run)` is configuration 01 by name, not 02 by its stray 2.
+    """
     n = norm(value)
-    m = re.search(r"0*([1-4])(?!\d)", n)
+    m = CONFIG_NUMBER.match(n)
     if m:
         return m.group(1)
-    if "default" in n:
-        return "1"
-    if "deny" in n:
-        return "2"
-    if "sandbox" in n or "allowlist" in n or "network" in n:
-        return "3"
-    if "narrow" in n:
-        return "4"
+    for num, words in CONFIG_WORDS:
+        if any(w in n for w in words):
+            return num
     return None
 
 

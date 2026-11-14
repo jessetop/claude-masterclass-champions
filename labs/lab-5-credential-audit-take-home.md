@@ -23,6 +23,7 @@
    - Hints: look at keys written into files, scripts that only echo a value, credentials shared across repositories, credentials owned by someone who left, personal keys sitting in a project folder, missing deny rules next to a secrets file, and whether a deny rule protects shell commands too. One repository is clean. A personal key and a service account key fail in different ways: say which is which.
 
 3. **Rank them.** Goal: a priority order with a reason for every position.
+   - Acceptance criteria: every numbered line names a finding and then says why it sits there, in a short clause. "1. Finding 1, because it is a live credential owned by a former employee" and "1. Finding 1 - live credential of a former employee" both work. "1. Finding 1 - highest" and "1. Finding 1: the shared CI key" do not: they restate the rank and the name, which the format checker and the rubric both read as no reason.
    - Hints: a live credential tied to someone who has left, and a secret with the widest reach, usually come first.
 
 4. **Plan rotation and ownership.** Goal: a table with a row for every credential in the inventory.
@@ -41,6 +42,8 @@
 
 - You list the clean repository as a finding: check its settings against the others before you decide.
 - You list the same problem twice: a shared secret and the person who owns its backing key are two different findings.
+- You report a credential's hygiene instead of its owner: "no expiry, never rotated" and "it sits in `.env`" describe the symptom. The finding is who owns that credential and whether that person is still there, which you only know once you join the inventory with `org/hr_departures.csv`. The rubric scores the join, not the rotation advice.
+- Your priority list restates the finding names: "1. Finding 1 - highest" is a rank, not a reason. Say what makes it worse than the one below it.
 - Your rotation table is missing a credential: the format checker names it.
 - You paste a secret value into your report: remove it. Report the pattern.
 - You propose to "move the key to another file in the repository": that fixes nothing.

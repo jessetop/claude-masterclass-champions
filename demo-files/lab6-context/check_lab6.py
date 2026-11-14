@@ -11,8 +11,13 @@ Scores 100:
                   there (15, three points per fact), no stale instruction remains (10).
   Plugin (30): every command and agent description is 200 characters or fewer (12), still 40+ characters (6),
                each still names its trigger topic (12).
-  Measurements (15): measure.csv has a value in all six rows.
-  Rules (15): RULES-LEARNED.md has exactly two numbered rules, each with a because clause.
+  Measurements (15): measure.csv has a value in all six rows it shipped with (rows you add
+                     yourself are ignored, and do not stand in for one of the six).
+  Rules (15): RULES-LEARNED.md has exactly two numbered rules, each with a because clause
+              (any numbered line with a because clause counts, wherever in the file it is).
+A fact counts when the file asserts it, and a stale instruction counts as gone when the file
+drops it or cancels it ("use pytest, not nosetests"; "Python 2 support was dropped"). Picking
+the stale side of the contradiction ("run the tests with nosetests, not pytest") is neither.
 It checks the files only. It cannot read your /context output; the measurement rows are self-reported.
 The 200 character limit is a lab rule of thumb, not a product limit.
 Wording is not graded: every check accepts any phrasing that keeps the fact.
@@ -57,6 +62,8 @@ def description(path):
 
     Handles a plain value, a value wrapped onto indented continuation lines, and a YAML
     block or folded scalar (description: > or description: |), with quotes stripped.
+    Inside real frontmatter a blank line does not end the value: YAML folds it into the
+    scalar, so indented text after a blank line still loads as part of the description.
     """
     t = read(path)
     if t is None:
@@ -69,7 +76,9 @@ def description(path):
     value = lines[start].split(":", 1)[1]
     for line in lines[start + 1:]:
         if not line.strip():
-            break  # a blank line ends the value
+            if m is None:
+                break  # with no frontmatter fence to stop at, a blank line ends the value
+            continue  # inside frontmatter YAML folds the blank line into the scalar
         if not re.match(r"[ \t]", line):
             break  # an unindented line is the next frontmatter key
         value += " " + line.strip()
@@ -83,6 +92,60 @@ def description(path):
 def sentences(text):
     """Rough sentence split, so a negation in one sentence cannot excuse its neighbours."""
     return [s for s in re.split(r"(?<=[.!?;:])\s+|\n+", text or "") if s.strip()]
+
+
+# A negation only cancels the term it governs. These three patterns decide which side of a
+# negation a term sits on, so "use pytest, not nosetests" reads differently from
+# "run the tests with nosetests, not pytest" even though both contain "not".
+NEGATES_NEXT = (r"(?i)\b(?:not|never|no longer|don't|do not|doesn't|isn't|aren't|instead of|"
+                r"rather than|avoid|avoids|without|dropped|removed|deleted|deprecated|"
+                r"stop using|stopped using)\b")
+# ... except that negating an omission prescribes the term: "never skip the FTP uploader".
+OMISSION = (r"(?i)\b(?:skip|skips|skipping|omit|omits|omitting|forget|forgets|forgetting|miss|"
+            r"misses|missing|neglect|neglects|leave out|leaves out|bypass|bypasses|fail to)\b")
+# Predicates that retire the term that came before them: "Python 2 support was dropped".
+RETIRED_AFTER = (r"(?i)\b(?:was|were|is|are|has been|have been|got)\s+(?:\w+\s+){0,2}"
+                 r"(?:dropped|removed|deleted|retired|gone|unsupported|obsolete|stale|dead)\b"
+                 r"|\b(?:no longer|not any ?more|does not exist|doesn't exist|never existed)\b")
+
+
+# Where one clause ends and the next begins. A negation governs only its own clause,
+# which is what stops "Avoid tabs and use 4 spaces" reading as a ban on 4 spaces,
+# while "run the tests with nosetests, not pytest" still negates pytest.
+CLAUSE_BREAK = re.compile(
+    "[,;:\u2014]"                                       # comma, semicolon, colon, em dash
+    "|\\s[-\u2013]\\s"                                    # spaced hyphen or en dash
+    "|\\b(?:and|but|then|while|whereas|however)\\b",      # coordinating conjunctions
+    re.I,
+)
+
+
+def occurs_asserted(text, pat, retired_cancels=False):
+    """True if some occurrence of pat is asserted rather than negated.
+
+    An occurrence is negated when a negation immediately governs it -- the negation is in
+    the same clause ahead of it, with no comma or clause break in between and no omission
+    verb turning it into a double negative. With retired_cancels, an occurrence whose
+    sentence goes on to retire it ("the FTP uploader was deleted") is negated too.
+    """
+    for s in sentences(text):
+        for m in re.finditer(pat, s):
+            before, after = s[:m.start()], s[m.end():]
+            # Only the clause the match actually sits in can negate it. A comma, a
+            # dash, or a coordinating conjunction starts a new clause, so
+            # "Avoid tabs and use 4 spaces" forbids tabs and KEEPS 4 spaces, while
+            # "run the tests with nosetests, not pytest" still negates pytest.
+            clause = CLAUSE_BREAK.split(before)[-1]
+            neg = re.search(NEGATES_NEXT, clause, re.I)
+            # The negation has to be close to the match, and an omission verb between
+            # the two turns it back into an assertion ("do not omit the 4 spaces").
+            gap = clause[neg.end():] if neg else ""
+            if neg and len(gap) <= 30 and not re.search(OMISSION, gap, re.I):
+                continue
+            if retired_cancels and re.search(RETIRED_AFTER, after):
+                continue
+            return True
+    return False
 
 
 def numbered_rules(text):
@@ -108,6 +171,27 @@ def numbered_rules(text):
         prev_blank = not line.strip()
     blocks = re.split(r"(?m)^[ \t]*\d+[.)][ \t]+(?=\S)", "\n".join(body))[1:]
     return [b for b in (re.sub(r"\s+", " ", b).strip() for b in blocks) if b]
+
+
+def numbered_items(text):
+    """Every numbered item anywhere in the file, each joined with its continuation lines.
+
+    Used to enforce "exactly two": a numbered item that carries a because clause is a rule
+    wherever it sits, so a third rule parked under a later heading still counts, while the
+    evidence list the lab invites (numbered measurements, no because clause) does not.
+    """
+    items, cur = [], None
+    for line in (text or "").splitlines():
+        if re.match(r"[ \t]*#{1,6}\s", line) or not line.strip():
+            cur = None  # a heading or a blank line ends the item being collected
+        elif re.match(r"[ \t]*\d+[.)][ \t]+\S", line):
+            cur = [re.sub(r"^[ \t]*\d+[.)][ \t]+", "", line)]
+            items.append(cur)
+        elif cur is not None and (re.match(r"[ \t]+\S", line) or re.match(r"(?i)because\b", line)):
+            cur.append(line.strip())
+        else:
+            cur = None  # fresh unindented prose ends the item
+    return [re.sub(r"\s+", " ", " ".join(c)).strip() for c in items]
 
 
 def main():
@@ -143,7 +227,12 @@ def main():
         "the public API path (api.py)": r"(?i)\bapi\.py\b",
         "4-space indentation": r"(?i)\b(?:4|four)[ -]spaces?\b",
     }
-    missing = [k for k, p in must.items() if not re.search(p, after_text)]
+    # A fact has to be asserted, not forbidden: "run the tests with nosetests, not pytest"
+    # mentions pytest but does not keep the test command. The .env rule is itself a
+    # prohibition ("never commit .env"), so that one is matched plainly.
+    prohibitions = {"never commit .env"}
+    missing = [k for k, p in must.items()
+               if not (re.search(p, after_text) if k in prohibitions else occurs_asserted(after_text, p))]
     award(15, not missing, "The facts that must survive are still in CLAUDE.md",
           "3 points each; add a line that names: %s" % ", ".join(missing),
           earned=3 * (len(must) - len(missing)))
@@ -154,17 +243,11 @@ def main():
         "the FTP uploader": r"(?i)\bftp\b|ftp_upload",
         "Python 2": r"(?i)\bpython ?2(\.7)?\b",
     }
-    # A sentence that cancels the old tool ("use pytest, not nosetests"; "Python 2 support was
-    # dropped") resolves the contradiction instead of repeating it, so it is not stale.
-    cancelled = (r"(?i)\b(not|no|never|dropped|removed|deleted|gone|instead|rather than|avoid|stop|"
-                 r"stopped|unsupported|obsolete|stale|ignore|former|formerly|used to|don't|"
-                 r"doesn't|isn't|no longer)\b")
-    still = []
-    for key, pat in stale.items():
-        for s in sentences(after_text):
-            if re.search(pat, s) and not re.search(cancelled, s):
-                still.append(key)
-                break
+    # Naming the old tool to cancel it ("use pytest, not nosetests"; "Python 2 support was
+    # dropped") resolves the contradiction instead of repeating it, so it is not stale. The
+    # negation has to govern the old tool itself: "run the tests with nosetests, not pytest"
+    # and "never skip the FTP uploader" still prescribe the thing the lab asks you to drop.
+    still = [key for key, pat in stale.items() if occurs_asserted(after_text, pat, retired_cancels=True)]
     award(10, not still, "No stale instruction remains",
           "still prescribes: %s - delete the line, or say plainly that it no longer applies"
           % ", ".join(still))
@@ -209,20 +292,54 @@ def main():
             for one in (v if isinstance(v, list) else [v]):
                 yield one or ""
 
-    rows = [r for r in rows if any(c.strip() for c in cells(r))]  # ignore blank records
-    filled = [r for r in rows if (r.get("value") or "").strip()]
-    award(15, len(filled) >= 6, "measure.csv has a value in all six rows",
-          "%d of the 6 measurements have something in the value column" % len(filled))
+    def measurement(row):
+        """Which of the six template measurements this row is, or None for a student's own row.
 
-    rules = numbered_rules(read(HERE / "RULES-LEARNED.md"))
+        The six are (before, after) x (the /context total, the CLAUDE.md line, the plugin
+        token cost), so a row a student appends cannot stand in for a template row left
+        blank. Matching is on the step and label wording, not on the row's position.
+        """
+        step = re.sub(r"\s+", " ", (row.get("step") or "")).strip().lower()
+        label = re.sub(r"\s+", " ", (row.get("what_to_record") or "")).strip().lower()
+        if re.search(r"\b2|after|trimm", step) or "after" in label or "trimm" in label:
+            phase = "after"
+        elif re.search(r"\b1|before", step) or "before" in label or "startup" in label:
+            phase = "before"
+        else:
+            return None
+        if "plugin" in label or "token cost" in label:
+            return (phase, "the plugin details token cost")
+        if "claude.md" in label and "total" not in label:
+            return (phase, "the /context CLAUDE.md line")
+        if "total" in label:
+            return (phase, "the /context startup total")
+        return None
+
+    rows = [r for r in rows if any(c.strip() for c in cells(r))]  # ignore blank records
+    done = {measurement(r) for r in rows if (r.get("value") or "").strip()} - {None}
+    blank = ["%s (%s)" % (w, p) for p in ("before", "after")
+             for w in ("the /context startup total", "the /context CLAUDE.md line",
+                       "the plugin details token cost") if (p, w) not in done]
+    award(15, not blank, "measure.csv has a value in all six rows",
+          "%d of the 6 template rows have a value; still blank: %s"
+          % (6 - len(blank), "; ".join(blank[:3]) + (" ..." if len(blank) > 3 else "")))
+
+    rules_text = read(HERE / "RULES-LEARNED.md")
+    rules = numbered_rules(rules_text)
+    # Any numbered line with a because clause is a rule, wherever it sits, so a third rule
+    # parked under a later heading still counts against "exactly two".
+    rule_shaped = [b for b in numbered_items(rules_text) if re.search(r"(?i)\bbecause\b", b)]
     no_because = [i + 1 for i, r in enumerate(rules) if not re.search(r"(?i)\bbecause\b", r)]
     if len(rules) != 2:
         hint = "found %d numbered rule(s) in the rules list; write exactly two" % len(rules)
+    elif len(rule_shaped) > 2:
+        hint = ("found %d numbered lines with a because clause; write exactly two, and keep "
+                "evidence notes as prose or - bullets" % len(rule_shaped))
     else:
         many = len(no_because) > 1
         hint = "rule%s %s %s no \"because\" clause: end the rule with the reason you measured" % (
             "s" if many else "", " and ".join(str(i) for i in no_because), "have" if many else "has")
-    award(15, len(rules) == 2 and not no_because,
+    award(15, len(rules) == 2 and len(rule_shaped) == 2 and not no_because,
           "RULES-LEARNED.md has exactly two numbered rules, each with a because clause", hint)
 
     print("LAB 6 SCORE (local checks)")

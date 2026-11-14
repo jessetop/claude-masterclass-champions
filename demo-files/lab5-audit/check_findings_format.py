@@ -37,19 +37,44 @@ def priority_items(text):
     return [ln for ln in section(text, "Priority order").splitlines() if re.match(r"\s*\d+[.)]\s+\S", ln)]
 
 
+# Words that only restate a finding's name or its rank. A "reason" built out of
+# nothing but these is not a reason, which is why the length of a line cannot
+# decide the question: "cred-101 service account key in credentials_inventory"
+# is long and says nothing about why it is first.
+FILLER = set("""a an the and or of in on to by for with as at is are was were be been
+has have had it its this that these those there here also still just very more most
+less but if while when than then so too own my our we they them i you
+first second third fourth fifth sixth highest high higher top biggest bigger largest
+greatest worst priority prioritized prioritised urgent important critical severe
+severity rank ranked order next later last one ones number position place spot slot
+finding findings issue issues item items problem problems thing things""".split())
+
+CONNECTIVE = r"because|since|reason|so that|as it|as the|which|due to|given|in order|so"
+
+
 def has_reason(line):
     """True when a priority line says *why* it sits where it does.
 
     Shared with facilitator/lab5/score_audit.py: keep the two in step.
-    Accepts a connective ("because", "since", ...), a punctuation break after the
-    finding name (", " / " - " / ": "), or a substantial clause of plain prose.
+    The reason is the clause after the finding's name, introduced either by a
+    connective ("because", "since", ...) or by the punctuation that sets it off
+    (", " / " - " / ": " / " (" / ". "). The break is not itself the reason, so the
+    clause after it must carry at least two words that are not filler - FILLER holds
+    the rank words ("highest", "urgent", "critical"), so "Finding 1 - highest" is a
+    rank, not a reason, and fails.
+
+    There is deliberately NO word-count floor. An earlier version demanded five
+    words and rejected "6. Finding 5, hygiene only." - a terse but genuine reason -
+    while accepting a longer restatement of the finding's own name. Length is not
+    the signal; saying something beyond the rank is.
     """
     body = re.split(r"^\s*\d+[.)]\s+", line, maxsplit=1)[-1].strip()
-    if re.search(r"because|since|reason|so that|\bso\b|as it|as the|which|due to|given|in order", body, re.I):
-        return True
-    if re.search(r"[:;,\u2014]|\s[-\u2013]\s", body):
-        return True
-    return len(body) >= 40
+    parts = re.split(r"\b(?:%s)\b|[:;,\u2014(\[]|\s[-\u2013]\s|\.\s+" % CONNECTIVE,
+                     body, maxsplit=1, flags=re.I)
+    if len(parts) < 2:
+        return False
+    words = re.findall(r"[A-Za-z][A-Za-z'\u2019]*", parts[1])
+    return sum(1 for w in words if w.lower() not in FILLER) >= 2
 
 
 def main():
@@ -90,8 +115,9 @@ def main():
     print("[%s] priority list has %d items, %d with a reason (need 4+, all with a reason)"
           % ("ok" if ok else "MISSING", len(pr), len(with_reason)))
     if pr and len(with_reason) < len(pr):
-        print("  each numbered line needs a reason after the finding name, for example")
-        print("  \"1. Finding 1, because it is a live credential owned by someone who left\"")
+        print("  each numbered line needs a reason after the finding name, not the name again:")
+        print("  \"1. Finding 1, because it is a live credential owned by someone who left\" counts,")
+        print("  \"1. Finding 1: the shared CI key\" and \"1. Finding 1 - highest\" do not")
 
     table = section(text, "Rotation and ownership plan")
     missing = [c for c in ids if c not in table]
