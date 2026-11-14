@@ -8,17 +8,45 @@
 
 **Learning objective:** Harden a deliberately weak project with a sandbox, network and file rules, deny rules and a fixed MCP list, then prove it with an attack script, and say what a sandbox does not cover. Time: 90 minutes.
 
-**Files:** `$FILES/lab3-harden`: `report-archiver/` (the project, with `attack_simulation.py`), `check_settings.py`. Environment check: `$FILES/setup/check_env.sh`.
+**Files:** `$FILES/lab3-harden`: `report-archiver/` (the project, with `attack_simulation.py`), `check_settings.py`. Environment check: `$FILES/setup/check_env.sh`. Sandbox check and switch: `$FILES/setup/classroom-sandbox.sh`.
 
 **Context:** The sandbox limits shell commands and their child processes. It needs `bubblewrap` and `socat` on Linux, and Ubuntu 24.04 and later may need an AppArmor change. `sandbox.failIfUnavailable: true` makes a missing sandbox a hard failure, where the default is to run unsandboxed. A `Read` deny rule blocks Claude's file tools, and `sandbox.filesystem.denyRead` covers shell commands, so you use both. Hooks, MCP servers and plugin processes run outside the sandbox. `report-archiver` is a tiny tool with a command injection in `app.py`. Its settings are wide open, a hook reports every tool call to an outside address, and `.mcp.json` declares a server nobody approved. `check_settings.py` scores the files (60 points). `attack_simulation.py` makes four harmless attempts and scores the outcomes (40 points). Both run on your machine.
 
 **Steps:**
 
 1. **Make the sandbox work (about 15 minutes).** Goal: a sandbox that really blocks a write, shown by the probe.
-   - Run `bash $FILES/setup/check_env.sh`. Install `bubblewrap` and `socat` if it says so. On Ubuntu 24.04 and later, check `sysctl kernel.apparmor_restrict_unprivileged_userns`, and if it is 1, follow your instructor's AppArmor instructions.
+   - Run `bash $FILES/setup/check_env.sh`. Install `bubblewrap` and `socat` if it says so.
+   - Then check whether the operating system is blocking the sandbox:
+     `bash $FILES/setup/classroom-sandbox.sh --check`. On Ubuntu 24.04 and later an
+     AppArmor profile usually is. If it says the profile is active, read the note below
+     before you run `--on`.
    - Copy `report-archiver` to `~/work/report-archiver`. Run `python3 attack_simulation.py --baseline` in a normal terminal outside Claude Code, and check it says REACHABLE.
    - Acceptance criteria: inside a Claude Code session in the project, with the sandbox on, `touch ~/sandbox-probe` fails with "Read-only file system". Then take a baseline: with the sandbox off, run `python3 attack_simulation.py` from the Bash tool and note the score.
    - Hints: Restart Claude Code after installing the dependencies, because the check runs at startup. The `/sandbox` panel has a Dependencies tab. If the probe file appears, delete it and fix the sandbox before you go on.
+
+   > **About `--on`, because it is this lab's first real security decision.** On Ubuntu
+   > 24.04 and later, the AppArmor profile `bwrap-userns-restrict` stops unprivileged
+   > processes from creating nested user namespaces, which is exactly what the sandbox is
+   > built on. `--on` disables that profile. It does **not** grant the permission to
+   > Claude Code alone: the profile is machine-wide, so every process on the machine gains
+   > what it lifts.
+   >
+   > Narrower options exist and neither works. Relaxing
+   > `kernel.apparmor_restrict_unprivileged_userns` does nothing, because the profile stays
+   > loaded and carries `audit deny capability`, and an AppArmor deny beats any allow. A
+   > profile naming the `claude` binary does not work either, because the denial is raised
+   > inside `unpriv_bwrap`, the profile that `/usr/bin/bwrap` transitions *into* —
+   > confining the caller does not change what its child transitions to. Both were tested
+   > on a class image and both failed.
+   >
+   > So the honest summary is: you are weakening a host control to switch on an application
+   > sandbox. That is defensible on a disposable class machine holding nothing but
+   > placeholders, and it is usually the wrong answer on a laptop or a build server. Run
+   > `--off` when you finish the lab, and be ready to say in Step 6 what you would have
+   > needed before doing this somewhere real.
+   >
+   > **If you cannot or choose not to run `--on`, the lab still works** — see the fallback
+   > scoring under the rubric. You do not lose the lab, you lose the live half of Part B.
 
 2. **Static baseline (about 5 minutes).** Goal: a table of what `check_settings.py` finds.
    - Run `python3 check_settings.py ~/work/report-archiver`. Acceptance criteria: every FAIL with one sentence on the risk.
@@ -45,10 +73,25 @@
    - Acceptance criteria: the sandbox probe line says the sandbox looks active; attempts 1, 2 and 3 are BLOCKED; attempt 4 is BLOCKED by your code fix; the score is 40.
    - Hints: if attempt 2 reads BLOCKED with the sandbox off, the machine has no internet. Use the baseline. If attempt 3 is not blocked, check the sandbox `denyRead` entry, not just the Read deny rule. Restart Claude Code after each settings change.
 
+   > **If the session refuses every command**, including the attack script, with
+   > `apply-seccomp: ... Permission denied`, then your configuration is correct and this
+   > machine has no working sandbox. `failIfUnavailable: true` is doing its job. You cannot
+   > produce the table from inside the session: run `python3 attack_simulation.py` in your
+   > own terminal instead, record attempt 4 from that, and take attempts 1 to 3 from the
+   > checker's predictions under the fallback scoring. That is the expected path on a
+   > machine without the sandbox, not a mistake on your part.
+
 6. **Write what it does not cover (about 10 minutes).** Goal: five sentences, in a file called `GAPS.md`.
    - Acceptance criteria: it names at least three things the sandbox does not limit (for example hooks, MCP servers, plugin processes and Claude's file tools), says which of your controls covers each one, and says what the code fix did that the sandbox could not.
+   - If you ran `classroom-sandbox.sh --on` in Step 1, add one line: you turned off a
+     host control to turn on an application sandbox. What would you have needed — approval,
+     compensating controls, a different machine — before doing that somewhere that
+     mattered?
 
-**Checkpoint:** Part A is 60, the attack script reports at least three BLOCKED attempts with the sandbox on, and `GAPS.md` exists.
+**Checkpoint:** Part A is 60, and `GAPS.md` exists. With a working sandbox, the attack
+script also reports at least three BLOCKED attempts. Without one, the checker predicts
+attempts 1 to 3 blocked from your configuration and attempt 4 is BLOCKED live in your own
+terminal.
 
 **Common problems:**
 
@@ -67,6 +110,18 @@
 | Part B: each attack BLOCKED live is 10 points (write outside, disallowed domain, secrets read, injection) | 40 |
 
 A missing `GAPS.md` or a Part B result with no saved output caps the total at 90. Zeroing the Claude-facing features to pass, for example deleting the tool or the tests, scores 0 for the lab.
+
+**Fallback scoring, when the sandbox cannot start on your machine.** Part A is 60 and
+works everywhere — it reads files and runs nothing. Attempts 1 to 3 need the sandbox, so
+they are scored 5 each from the outcomes `check_settings.py` **predicts** from your
+configuration. Attempt 4 is always scored live, because a command injection inside the
+working directory needs no sandbox to demonstrate: run `python3 attack_simulation.py` in
+your own terminal for it. **The maximum is 85.** A sandbox that will not start on your
+machine is a known platform limit, not a failure, and your instructor will say before the
+lab which scoring applies.
+
+> Read the predictions rather than assuming them. An attempt is worth 5 only where the
+> checker predicts it blocked — on an unhardened configuration it predicts none of them.
 
 **Facilitator note:** Remove before sharing. The answer key is `facilitator/lab3/solution/report-archiver` (a settings file, a fixed `app.py` and a two-server `.mcp.json`). It scores 60 on Part A, and 20 to 40 on Part B depending on the sandbox on the machine. Traps planted in `report-archiver`:
 

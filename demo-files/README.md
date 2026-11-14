@@ -1,10 +1,10 @@
 # demo-files: AI Champions Training, Claude Code for Engineering Teams
 
-Hands-on files for the demos (`demos.md`) and labs (`labs.md`). ROI Training. Everything is fictional. Every planted secret is a placeholder (`FAKE-TOKEN-DO-NOT-USE` and similar). Students work on Linux class machines with bash and Python 3.11. Instructors may demo from Windows or macOS (each demo gives the differences).
+Hands-on files for the demos (`demos/`) and labs (`labs/`). ROI Training. Everything is fictional. Every planted secret is a placeholder (`FAKE-TOKEN-DO-NOT-USE` and similar). Students work on Linux class machines with bash and Python 3.11. Instructors may demo from Windows or macOS (each demo gives the differences).
 
 Run `bash setup/check_env.sh` on a Linux machine first. It checks Python, `jq`, `git`, `claude`, `bubblewrap`, `socat` and the AppArmor setting, and prints install commands.
 
-Remove `facilitator/` (and the Facilitator notes in `labs.md`) before you share this folder with students.
+Run `./make-student-pack.sh <destination>` to build the student copy: it removes `facilitator/` and refuses to finish if any answer key survives. Strip the Facilitator notes from `labs/` and the Instructor notes from `demos/` separately.
 
 ## Index
 

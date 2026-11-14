@@ -1,6 +1,6 @@
 # Facilitator folder
 
-Do not share this folder with students. Remove it, and the Facilitator notes in `labs.md`, before you hand out `demo-files`.
+Do not share this folder with students. `make-student-pack.sh` removes it for you. Also strip the Facilitator note at the end of each file in `labs/` and the Instructor note in each file in `demos/` before you hand those documents out.
 
 ## Where each answer key is
 

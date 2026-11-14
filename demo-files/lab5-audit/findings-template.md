@@ -1,5 +1,18 @@
 # Credential Audit: Findings
 
+> **Three things this template assumes, so everyone uses the words the same way.**
+>
+> - **File and line** may list more than one location when a finding genuinely spans
+>   files. A secret shared across repositories lives in the inventory row *and* in each
+>   workflow that uses it. Keep it as one finding with several locations.
+> - **Severity** — high: the credential is already exposed, or is live and unaccountable.
+>   Medium: exposure is possible but needs something further to happen, and nothing shows
+>   it has. Low: hygiene that does not expose a credential on its own.
+> - **Owner** — if a credential you found is not in the inventory and has no owner, write
+>   `unassigned - not in the inventory` and say who should own it. A credential nobody
+>   tracks is a finding about the inventory, not a gap in your report.
+
+
 Audit target: `harbor-org` (fictional sample). Auditor: ____________  Date: ____________
 
 Write one block per finding. A finding is a real credential or secret hygiene problem. Do not list a clean item as a finding.

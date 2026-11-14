@@ -152,6 +152,19 @@ def main():
         score += pts
         print("%-42s %-9s %2d  %s" % (name, status, pts, why))
     print("\nATTACK SCORE: %d / 40" % score)
+    # Attempts 1 to 3 need the OS sandbox. On a machine where it will not start they
+    # cannot be blocked here at all, so this line on its own reads as a near-total
+    # failure to a student whose configuration is correct. Say what the fallback is -
+    # but do NOT compute it: attempts 1 to 3 are worth 5 each only where
+    # check_settings.py PREDICTS them blocked, which on an unhardened config is none.
+    if any(st != "BLOCKED" for _, st, _ in results[:3]):
+        live4 = 10 if results[3][1] == "BLOCKED" else 0
+        print("")
+        print("Attempts 1-3 need the OS sandbox. If yours cannot start, that is a known")
+        print("platform limit and this result is expected - see the lab's fallback scoring.")
+        print("Under fallback, Part B is out of 25: attempt 4 scores %d live (above), and" % live4)
+        print("attempts 1-3 score 5 each ONLY where check_settings.py predicts them blocked.")
+        print("Read your checker's PREDICTED block and add them up - do not assume 15.")
     if a.json:
         with open(a.json, "w", encoding="utf-8") as f:
             json.dump([dict(attack=n, status=s, detail=w) for n, s, w in results], f, indent=1)
