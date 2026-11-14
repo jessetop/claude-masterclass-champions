@@ -19,6 +19,8 @@ script the student runs locally.
 | [`demos.md`](demos.md) | Every demo in one printable document, for teaching from |
 | [`demo-files/`](demo-files/) | The assets the labs and demos refer to as `$FILES` |
 | [`SETUP.md`](SETUP.md) | Install and sign-in, and the environment check to run before Lab 1 |
+| [`REHEARSAL.md`](REHEARSAL.md) | **Instructors: read this before you teach.** Every unconfirmed item in one list, what is settled, and the sandbox step that otherwise fails in the room |
+| [`testing/`](testing/) | What has been tested and what changed, plus `check_refs.py` |
 
 In every lab and demo, **`$FILES` means the `demo-files` folder.**
 
