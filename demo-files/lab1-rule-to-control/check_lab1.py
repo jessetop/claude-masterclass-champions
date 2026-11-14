@@ -28,9 +28,15 @@ out = []
 
 def award(points, ok, label, hint=""):
     global score
-    got = points if ok else 0
+    award_partial(points if ok else 0, points, label, hint)
+
+
+def award_partial(got, points, label, hint=""):
+    """Award `got` of `points`. Use this where the rubric promises partial credit."""
+    global score
     score += got
-    out.append("[%s] %2d/%-2d %s%s" % ("PASS" if ok else "FAIL", got, points, label, ("  -> " + hint) if (hint and not ok) else ""))
+    tag = "PASS" if got == points else ("PART" if got else "FAIL")
+    out.append("[%s] %2d/%-2d %s%s" % (tag, got, points, label, ("  -> " + hint) if (hint and got < points) else ""))
 
 
 def run_hook(script, command, cwd, env_extra=None):
@@ -71,14 +77,22 @@ def main():
 
     # Hook (40)
     matcher, command = hook_entry(cfg)
-    wired = bool(command) and "Bash" in (matcher or "").split("|") and "${CLAUDE_PROJECT_DIR}" in command
+    # A matcher of "*" fires for every tool, Bash included, so it satisfies "runs before
+    # the Bash tool". Both ${CLAUDE_PROJECT_DIR} and $CLAUDE_PROJECT_DIR are valid shell
+    # and both locate the script from the project rather than the current directory.
+    matchers = [m.strip() for m in (matcher or "").split("|")]
+    matches_bash = "Bash" in matchers or "*" in matchers
+    uses_project_dir = bool(command) and "CLAUDE_PROJECT_DIR" in command
+    wired = bool(command) and matches_bash and uses_project_dir
     award(10, wired, "A PreToolUse hook is wired to Bash and its command uses ${CLAUDE_PROJECT_DIR}",
           "matcher=%r command=%r" % (matcher, command))
     script = None
     if command:
         m = re.search(r"[\w./${}-]*\.py", command)
         if m:
-            p = Path(m.group(0).replace("${CLAUDE_PROJECT_DIR}", str(proj)))
+            raw = m.group(0).replace("${CLAUDE_PROJECT_DIR}", str(proj))
+            raw = raw.replace("$CLAUDE_PROJECT_DIR", str(proj))
+            p = Path(raw)
             script = p if p.is_absolute() else proj / p
     blocked_ok = False
     log_ok = False
@@ -116,7 +130,10 @@ def main():
     rows = charter_rows(text)
     decided = [r for r in rows if r[3].lower() in ("enforced", "reviewed") and r[2]]
     n = len(decided)
-    award(20 if n >= 6 else int(20 * n / 6), n >= 6, "Charter: %d of %d areas decided (need at least 6)" % (n, len(rows)))
+    # The rubric promises partial credit below 6, so pay it rather than scoring zero.
+    award_partial(20 if n >= 6 else int(20 * n / 6), 20,
+                  "Charter: %d of %d areas decided (need at least 6 for full marks)" % (n, len(rows)),
+                  "each decided area is worth about 3 points until you reach 6")
     settings_text = json.dumps(cfg)
     bad = []
     for r in rows:
@@ -133,7 +150,14 @@ def main():
                 exists = True
         if not control or only_claude_md or not exists:
             bad.append("row %s (%s): control %r is not a file or setting that exists" % (r[0], r[1], control))
-    award(15, rows != [] and not bad, "Every Enforced row names a control that exists (CLAUDE.md is a request, not a control)")
+    # With no Enforced rows at all this check passes vacuously, so an untouched charter
+    # used to collect the full 15. You have just built a hook and two deny rules in this
+    # lab; at least one row should be able to point at them.
+    enforced_rows = [r for r in rows if r[3].lower() == "enforced"]
+    award(15, bool(rows) and bool(enforced_rows) and not bad,
+          "Every Enforced row names a control that exists (CLAUDE.md is a request, not a control)",
+          "no row is marked Enforced - name the hook or the deny rules you just built"
+          if rows and not enforced_rows else "")
     for b in bad:
         out.append("        " + b)
 

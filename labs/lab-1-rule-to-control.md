@@ -30,7 +30,7 @@
    - Acceptance criteria:
      - `.claude/settings.json` runs the hook before the `Bash` tool, and the command locates the script from the project directory and not from the current directory.
      - `permissions.deny` has `Read` rules that cover `.env` and `config/secrets.env`.
-   - Hints: Check which tool the matcher names. A hook command that starts with a relative path breaks when Claude Code is started from a subfolder. The docs use a project directory variable for this. Check the spelling of every path in a deny rule. A deny rule on the Read tool is not the same as protecting a file from shell commands. Write that down for the charter.
+   - Hints: Check which tool the matcher names. A hook command that starts with a relative path breaks when Claude Code is started from a subfolder. The docs use a project directory variable for this — `${CLAUDE_PROJECT_DIR}` and `$CLAUDE_PROJECT_DIR` both work, and the scorer accepts either. Check the spelling of every path in a deny rule. A deny rule on the Read tool is not the same as protecting a file from shell commands. Write that down for the charter.
 
 4. **Fill in the charter (about 6 minutes).** Goal: a charter that tells the truth about where your team stands.
    - Acceptance criteria:
@@ -64,7 +64,7 @@
 | A block writes a `blocked` line to the log | 10 |
 | Read deny rule for `.env` | 8 |
 | Read deny rule for `config/secrets.env` | 7 |
-| Charter: 6 or more of 10 decided (partial credit below 6) | 20 |
+| Charter: 6 or more of 10 decided (partial credit below 6, about 3 points an area) | 20 |
 | Every Enforced row names a control that exists | 15 |
 
 **Facilitator note:** Remove before sharing. The answer key is `facilitator/lab1/solution/` (`ledgerlite/.claude/settings.json`, `ledgerlite/.claude/hooks/guard.py`, `charter.md`), which scores 100. Traps planted in `ledgerlite`:
@@ -79,4 +79,4 @@
 | No logging anywhere, so rule 3 has no control | `guard.py` |
 | Two charter rows pre-marked Enforced with no control: row 6 names `CLAUDE.md`, row 9 names "the team will keep notes" | `charter.md` rows 6 and 9 |
 
-Watch for a student who passes the exit-code tests by catching every command (exit 2 on everything): the two exit-0 checks catch it. Watch for a student who marks all 10 rows Enforced: the control check catches rows with no control, and you should ask for the evidence on the others. Optional live check (uses model requests): start `claude` in the fixed project and ask it to run `rm -rf build`; the hook should block it. Whether the deny rule also stops `cat .env` in the shell is unconfirmed (see Demo 3), so the charter note should say a deny rule covers the file tools and that shell protection needs the sandbox.
+The scorer tests `rm -rf` and `rm -fr` only. `rm -r -f` is listed above as a planted gap and the solution handles it, but it is **not scored** — ask the class about it rather than relying on the score to catch it. A matcher of `*` is accepted, because it does fire for Bash; it is worth pointing out that it also fires for `Read` and `Edit`, which is broader than the rule needs. Watch for a student who passes the exit-code tests by catching every command (exit 2 on everything): the two exit-0 checks catch it. Watch for a student who marks all 10 rows Enforced: the control check catches rows with no control, and you should ask for the evidence on the others. Optional live check (uses model requests): start `claude` in the fixed project and ask it to run `rm -rf build`; the hook should block it. Whether the deny rule also stops `cat .env` in the shell is unconfirmed (see Demo 3), so the charter note should say a deny rule covers the file tools and that shell protection needs the sandbox.
