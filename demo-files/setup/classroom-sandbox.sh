@@ -33,9 +33,15 @@
 # Run `--off` when you are finished. A reboot also restores the default.
 
 set -u
+# Messages below use $0, never $FILES. $FILES is a convention in the lab text, not an
+# exported variable, so under `set -u` an echo containing it aborts the script. Run 1 on
+# the class image hit exactly that: --check died with "FILES: unbound variable" and exit 1,
+# swallowing the line that tells the student how to switch the sandbox on.
 PROFILE="/etc/apparmor.d/bwrap-userns-restrict"
 DISABLE_LINK="/etc/apparmor.d/disable/$(basename "$PROFILE")"
 SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+# Non-interactive variant for read-only probes: never blocks on a password prompt.
+SUDO_N=""; [ "$(id -u)" -ne 0 ] && SUDO_N="sudo -n"
 
 case "${1:-}" in --check|--on|--off) MODE="$1" ;; *)
   sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'
@@ -53,17 +59,20 @@ if [ ! -e "$PROFILE" ] && [ ! -L "$DISABLE_LINK" ]; then
   exit 0
 fi
 
-loaded() { $SUDO aa-status 2>/dev/null | grep -q 'unpriv_bwrap'; }
+# --check advertises "changes nothing, no sudo", so it must never sit at a password
+# prompt. sudo -n fails immediately instead of waiting, and the profile-file test above
+# already answers the question on its own where aa-status is unavailable.
+loaded() { $SUDO_N aa-status 2>/dev/null | grep -q 'unpriv_bwrap'; }
 
 report() {
   if [ -L "$DISABLE_LINK" ]; then
     echo "[ OK ] bwrap-userns-restrict is DISABLED - the sandbox can start."
-    echo "       Put it back with: bash $FILES/setup/classroom-sandbox.sh --off"
+    echo "       Put it back with: bash $0 --off"
   elif loaded; then
     echo "[INFO] bwrap-userns-restrict is ACTIVE - the sandbox cannot start on this machine."
     echo "       Sandboxed Bash calls will fail with 'apply-seccomp ... Permission denied'."
     echo "       That is a platform limit, not a mistake in your configuration."
-    echo "       Switch it off for this lab with: bash $FILES/setup/classroom-sandbox.sh --on"
+    echo "       Switch it off for this lab with: bash $0 --on"
   else
     echo "[ OK ] unpriv_bwrap is not loaded - nothing is blocking the sandbox."
   fi
@@ -79,7 +88,7 @@ case "$MODE" in
     if $SUDO apparmor_parser -R "$PROFILE" 2>/dev/null; then
       echo "[ OK ] disabled bwrap-userns-restrict. The sandbox can now start."
       echo "       Machine-wide, for every process - see the notes at the top of this file."
-      echo "       Undo with: bash $FILES/setup/classroom-sandbox.sh --off"
+      echo "       Undo with: bash $0 --off"
     else
       $SUDO rm -f "$DISABLE_LINK"
       echo "[FAIL] apparmor_parser could not unload the profile. Nothing was changed."

@@ -342,3 +342,49 @@ Step 1 now warns students about the two halves, because every one of them will s
 configuration 03 cannot be exercised here at all**. Those need an RVC instance, and they
 are the largest remaining untested surface.
 
+---
+
+## Pass 6 — the first RVC Phase 0, and two bugs in my own script (2026-11-14)
+
+A session on the real class image ran Phase 0. **The image is in better shape than
+expected:** Ubuntu 26.04.1, Claude Code 2.1.311 at `/usr/bin/claude`, and `jq`,
+`bwrap` and `socat` all already installed, with passwordless sudo. `check_env.sh` reports
+every required item present, so nothing needs provisioning this week. `smoke.py` reported
+OK and `check_refs.py` resolved all 53 references.
+
+Both defects it found were in `classroom-sandbox.sh`, which I wrote.
+
+### 6.1 `--check` crashed with `FILES: unbound variable`
+
+Porting the script from the sister course, I replaced `$0` in its messages with
+`bash $FILES/setup/classroom-sandbox.sh`. `$FILES` is a **convention in the lab text**,
+not an exported variable, and the script runs under `set -u` — so any message containing
+it aborts.
+
+Run exactly as the brief writes it, `--check` died at line 66 with
+`FILES: unbound variable` and exit 1, swallowing the line that tells the student how to
+switch the sandbox on. `--on` would have hit the same thing on its "Undo with" line
+*after succeeding*, so a working run would have looked like a failure.
+
+Messages now use `$0`, which is always defined and shows the path actually invoked. Three
+expansions replaced; the header comments keep `$FILES` because the usage text is printed
+literally by `sed` and never expanded. Verified on real Linux with `FILES` unset,
+including the ACTIVE branch that crashed, by pointing `PROFILE` at a fixture and forcing
+`loaded()` true: full message, correct path, exit 0.
+
+### 6.2 `--check` could hang on a password prompt
+
+Found while testing the fix. `--check` advertises *"changes nothing, no sudo"* but calls
+`sudo aa-status`. On RVC sudo is passwordless so it never showed; on any machine where
+sudo prompts, `--check` sits waiting for a password. It timed out at 120 seconds under
+test.
+
+Read-only probing now uses `sudo -n`, which fails immediately instead of waiting. The
+profile-file test above it already answers the question where `aa-status` is unavailable.
+
+### What this says about the method
+
+Both bugs were in the one file no scorer covers and `smoke.py` cannot see — it tests
+scorers, not setup scripts. Neither would have surfaced without someone running the
+documented command on a real machine, which is the entire argument for the RVC pass.
+
