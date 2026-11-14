@@ -27,15 +27,20 @@ command -v claude >/dev/null 2>&1 && ok "claude $(claude --version 2>/dev/null |
 if command -v bwrap >/dev/null 2>&1; then ok "bubblewrap (bwrap)"; else bad "bubblewrap not found. Install: sudo apt-get install bubblewrap socat   (or: sudo dnf install bubblewrap socat)"; fi
 command -v socat >/dev/null 2>&1 && ok "socat" || bad "socat not found (see the bubblewrap line for the install command)"
 
-if [ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
-  v=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)
-  if [ "$v" = "1" ]; then
-    warn "kernel.apparmor_restrict_unprivileged_userns = 1. On Ubuntu 24.04 and later this can stop bubblewrap. Ask your instructor for the AppArmor profile fix."
-  else
-    ok "kernel.apparmor_restrict_unprivileged_userns = $v"
-  fi
+# Report the PROFILE, not the sysctl. The sysctl is the obvious thing to look at and it
+# is the wrong lever: bwrap-userns-restrict stays loaded whatever its value, and it
+# carries "audit deny capability", which beats any allow. A previous version of this
+# script printed [ ok ] when the sysctl was 0 while the profile was still blocking.
+if [ -e /etc/apparmor.d/disable/bwrap-userns-restrict ]; then
+  ok "AppArmor: bwrap-userns-restrict is disabled, so the sandbox can start"
+  warn "that is machine-wide. Run 'bash classroom-sandbox.sh --off' when you finish."
+elif [ -e /etc/apparmor.d/bwrap-userns-restrict ]; then
+  warn "AppArmor: bwrap-userns-restrict is present and will stop the sandbox starting."
+  warn "  Labs 3 and 4 need it. Switch it off for the lab with:"
+  warn "    bash \$FILES/setup/classroom-sandbox.sh --on     (and --off afterwards)"
+  warn "  Read Lab 3 Step 1 first: it is machine-wide, so it is a decision, not a fix."
 else
-  ok "no AppArmor user namespace restriction setting found (nothing to fix)"
+  ok "AppArmor: no bwrap-userns-restrict profile on this machine"
 fi
 
 echo
