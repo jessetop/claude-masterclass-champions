@@ -18,9 +18,38 @@ import sys
 FIELDS = ["File and line", "What is wrong", "Risk", "Severity", "Fix", "Rotation step", "Owner"]
 
 
+def norm(text):
+    """Accept both **Field:** and **Field**: spellings of the template's bold labels."""
+    return re.sub(r"\*\*([^*\n]+?)\*\*[ \t]*:", r"**\1:**", text)
+
+
+def blocks_of(text):
+    parts = re.split(r"^#{2,3}[ \t]*Finding[ \t]*\d+\b.*$", text, flags=re.M)[1:]
+    return [re.split(r"^#{2,3}[ \t]", b, flags=re.M)[0] for b in parts]
+
+
 def section(text, title):
     m = re.search(r"^## %s\s*\n(.*?)(?=^## |\Z)" % re.escape(title), text, re.S | re.M)
     return m.group(1) if m else ""
+
+
+def priority_items(text):
+    return [ln for ln in section(text, "Priority order").splitlines() if re.match(r"\s*\d+[.)]\s+\S", ln)]
+
+
+def has_reason(line):
+    """True when a priority line says *why* it sits where it does.
+
+    Shared with facilitator/lab5/score_audit.py: keep the two in step.
+    Accepts a connective ("because", "since", ...), a punctuation break after the
+    finding name (", " / " - " / ": "), or a substantial clause of plain prose.
+    """
+    body = re.split(r"^\s*\d+[.)]\s+", line, maxsplit=1)[-1].strip()
+    if re.search(r"because|since|reason|so that|\bso\b|as it|as the|which|due to|given|in order", body, re.I):
+        return True
+    if re.search(r"[:;,\u2014]|\s[-\u2013]\s", body):
+        return True
+    return len(body) >= 40
 
 
 def main():
@@ -31,13 +60,13 @@ def main():
     ids = [r["credential_id"] for r in csv.DictReader(open(sys.argv[2], encoding="utf-8"))]
     problems = 0
 
-    blocks = re.split(r"^## Finding \d+\s*$", text, flags=re.M)[1:]
-    blocks = [re.split(r"^## ", b, flags=re.M)[0] for b in blocks]
+    blocks = blocks_of(text)
     full = 0
     for i, b in enumerate(blocks, 1):
+        nb = norm(b)
         empty = []
         for f in FIELDS:
-            m = re.search(r"\*\*%s:\*\*[ \t]*(.*)" % re.escape(f), b)
+            m = re.search(r"\*\*%s:\*\*[ \t]*(.*)" % re.escape(f), nb)
             if not m or not m.group(1).strip():
                 empty.append(f)
         if empty:
@@ -47,16 +76,22 @@ def main():
     ok = full >= 4
     problems += not ok
     print("[%s] %d complete finding blocks (need at least 4)" % ("ok" if ok else "MISSING", full))
+    if not blocks and re.search(r"finding", text, re.I):
+        print("  no `## Finding N` headings found: check your heading spelling (`## Finding 1`, one per finding)")
 
     nf = [ln for ln in section(text, "Not a finding").splitlines() if ln.strip().startswith("-") and len(ln.strip()) > 2]
     problems += not nf
     print("[%s] 'Not a finding' section has an item" % ("ok" if nf else "MISSING"))
 
-    pr = [ln for ln in section(text, "Priority order").splitlines() if re.match(r"\s*\d+\.\s+\S", ln)]
-    with_reason = [ln for ln in pr if re.search(r"because|since|reason|so that|as it|which|:", ln, re.I)]
+    pr = priority_items(text)
+    with_reason = [ln for ln in pr if has_reason(ln)]
     ok = len(pr) >= 4 and len(with_reason) == len(pr)
     problems += not ok
-    print("[%s] priority list has %d items, %d with a reason (need 4+, all with a reason)" % ("ok" if ok else "MISSING", len(pr), len(with_reason)))
+    print("[%s] priority list has %d items, %d with a reason (need 4+, all with a reason)"
+          % ("ok" if ok else "MISSING", len(pr), len(with_reason)))
+    if pr and len(with_reason) < len(pr):
+        print("  each numbered line needs a reason after the finding name, for example")
+        print("  \"1. Finding 1, because it is a live credential owned by someone who left\"")
 
     table = section(text, "Rotation and ownership plan")
     missing = [c for c in ids if c not in table]

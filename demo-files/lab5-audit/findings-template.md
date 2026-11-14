@@ -11,6 +11,9 @@
 > - **Owner** — if a credential you found is not in the inventory and has no owner, write
 >   `unassigned - not in the inventory` and say who should own it. A credential nobody
 >   tracks is a finding about the inventory, not a gap in your report.
+>
+> Keep the headings (`## Finding 1`) and the bold field labels as they are below. The
+> format checker reads them to find your answers.
 
 
 Audit target: `harbor-org` (fictional sample). Auditor: ____________  Date: ____________
@@ -58,3 +61,10 @@ For every credential in the inventory: the owner, how long it lives, where it is
 | Credential | Owner | Lifetime | Where used | Rotation | If the owner leaves |
 |---|---|---|---|---|---|
 |  |  |  |  |  |  |
+
+## Credential options for automation
+
+One paragraph (lab step 5). Compare a personal token, a shared key and a federated or
+service identity: one strength and one weakness each, then say which you would use for
+automation and why. Mark anything you could not confirm from the course materials as
+`unconfirmed`. The format checker does not score this section; your facilitator reads it.

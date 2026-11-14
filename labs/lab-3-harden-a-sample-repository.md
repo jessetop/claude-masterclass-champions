@@ -21,7 +21,7 @@
      AppArmor profile usually is. If it says the profile is active, read the note below
      before you run `--on`.
    - Copy `report-archiver` to `~/work/report-archiver`. Run `python3 attack_simulation.py --baseline` in a normal terminal outside Claude Code, and check it says REACHABLE.
-   - Acceptance criteria: inside a Claude Code session in the project, with the sandbox on, `touch ~/sandbox-probe` fails with "Read-only file system". Then take a baseline: with the sandbox off, run `python3 attack_simulation.py` from the Bash tool and note the score.
+   - Acceptance criteria: inside a Claude Code session in the project, with the sandbox on, `touch ~/sandbox-probe` fails. On the Linux class image the message is "Read-only file system"; any refusal to write outside the project counts, the wording varies by platform. Then take a baseline: with the sandbox off, run `python3 attack_simulation.py` from the Bash tool and note the score.
    - Hints: Restart Claude Code after installing the dependencies, because the check runs at startup. The `/sandbox` panel has a Dependencies tab. If the probe file appears, delete it and fix the sandbox before you go on.
 
    > **About `--on`, because it is this lab's first real security decision.** On Ubuntu
@@ -50,6 +50,9 @@
 
 2. **Static baseline (about 5 minutes).** Goal: a table of what `check_settings.py` finds.
    - Run `python3 check_settings.py ~/work/report-archiver`. Acceptance criteria: every FAIL with one sentence on the risk.
+   - Point the checker at the copy you are hardening. It judges `allowWrite` and `denyRead` by
+     where each entry resolves against that path, so the path you pass has to be the project the
+     settings file belongs to.
 
 3. **Harden the settings (about 30 minutes).** Goal: Part A scores 60 of 60, and the project still works for its job.
    - Acceptance criteria:
@@ -60,9 +63,9 @@
      - The secrets file and `~/.ssh` are protected from reads by shell commands, and the secrets file and `.env` are also protected from Claude's file tools.
      - `curl` and `wget` are denied, and there is no blanket Bash allow.
      - Only the two approved servers (`docs-search`, `ticket-bridge`) remain in `.mcp.json`.
-     - No hook sends data to the network.
-     - `python3 app.py q3.txt` and `python3 -m pytest -q` still run.
-   - Hints: Read the settings file top to bottom and ask of each line what it grants. A wildcard in a domain list defeats the list. A command in `excludedCommands` is a hole in the wall. A hook is code that runs outside the sandbox, so reading it matters more than sandboxing it. Run the checker after each change and not once at the end.
+     - No hook command and no hook script sends data to the network, and every hook that stays points at a script that is still there to read.
+     - `python3 app.py q3.txt` still runs and still prints a checksum.
+   - Hints: Read the settings file top to bottom and ask of each line what it grants. A wildcard in a domain list defeats the list, in any shape: `*` and `*.com` are both wildcards. A command in `excludedCommands` is a hole in the wall. A hook is code that runs outside the sandbox, so reading it matters more than sandboxing it. `.env` needs its own `Read` deny rule: one for `secrets.env` does not cover it. Run the checker after each change and not once at the end.
 
 4. **Fix the code (about 10 minutes).** Goal: the command injection is closed in `app.py`.
    - Acceptance criteria: a report name such as `q3.txt ; echo injected > INJECTED_MARKER` is rejected or treated as a plain file name, and `python3 app.py q3.txt` still prints a checksum.
@@ -99,7 +102,8 @@ terminal.
 - Claude Code exits at startup after you set `failIfUnavailable`: the sandbox cannot start on this machine. Fix the dependency. That is the setting working.
 - You blocked everything and the tool no longer runs: `allowWrite` must still allow the project folder, and `python3` must still run.
 - Attempt 3 still succeeds: only the `Read` deny rule is set. It covers Claude's file tools and not a script run by the shell.
-- Part A stays below 60 after you fixed a line: the checker looks for the words `secrets` and `.ssh` in `denyRead`, and a `Read` deny for `.env`. Compare your spelling.
+- `allowWrite` is marked too broad: the checker expands `~` and `$HOME` and then asks whether the entry lands inside the project you passed on the command line. `.` and `~/work/report-archiver` both pass; your home folder passes nothing, however it is spelled.
+- Part A stays below 60 after you fixed a line: read the FAIL line, it names the entry it could not accept. `denyRead` needs `~/.ssh` plus either the secrets file or the folder holding it, and `permissions.deny` needs a `Read` rule whose file name is `.env`.
 - A server stays in `.mcp.json`: check the name against the approved list.
 
 **Scoring rubric (100 points):**
@@ -109,7 +113,7 @@ terminal.
 | Part A: `check_settings.py` (twelve checks, 60 points) | 60 |
 | Part B: each attack BLOCKED live is 10 points (write outside, disallowed domain, secrets read, injection) | 40 |
 
-A missing `GAPS.md` or a Part B result with no saved output caps the total at 90. Zeroing the Claude-facing features to pass, for example deleting the tool or the tests, scores 0 for the lab.
+A missing `GAPS.md` or a Part B result with no saved output caps the total at 90. Zeroing the Claude-facing features to pass, for example deleting `app.py`, the report it reads or the secrets file the deny rules are meant to protect, scores 0 for the lab.
 
 **Fallback scoring, when the sandbox cannot start on your machine.** Part A is 60 and
 works everywhere — it reads files and runs nothing. Attempts 1 to 3 need the sandbox, so
@@ -123,7 +127,7 @@ lab which scoring applies.
 > Read the predictions rather than assuming them. An attempt is worth 5 only where the
 > checker predicts it blocked — on an unhardened configuration it predicts none of them.
 
-**Facilitator note:** Remove before sharing. The answer key is `facilitator/lab3/solution/report-archiver` (a settings file, a fixed `app.py` and a two-server `.mcp.json`). It scores 60 on Part A, and 20 to 40 on Part B depending on the sandbox on the machine. Traps planted in `report-archiver`:
+**Facilitator note:** Remove before sharing. The answer key is `facilitator/lab3/solution/report-archiver` (a settings file, a fixed `app.py` and a two-server `.mcp.json`). It scores 60 on Part A, and 10 to 40 on Part B depending on the sandbox on the machine: 40 where the sandbox works, and 10 on a machine with no working sandbox, where only attempt 4 can be blocked live (the key records the same floor of 10). Traps planted in `report-archiver`:
 
 | Trap | Where | Check |
 |---|---|---|
@@ -137,4 +141,4 @@ lab which scoring applies.
 | A hook that sends every tool call to an outside address (runs outside the sandbox) | `.claude/settings.json` hooks, `tools/report_usage.py` | 4 |
 | Command injection | `app.py`, `os.system` with the name pasted in | attack 4 |
 
-The attack script's network target is `example.com:80`, a harmless public name. Unconfirmed: the entry format of `sandbox.excludedCommands` (the checker passes an empty or absent list), how a relative path in `sandbox.filesystem` is resolved (the answer key uses `.` and `./config/secrets.env`; if it fails on your image, use absolute paths), and how loopback traffic behaves under the sandbox's network proxy (which is why the default target is not loopback). Rehearse the whole lab on the class image, including the AppArmor step on Ubuntu 24.04 and later and a container check. If the image runs in a container, bubblewrap may fail with "Operation not permitted", the fix steps are not in the docs read, and `enableWeakerNestedSandbox` weakens isolation, so decide before class. Part A can always be scored without a working sandbox, because it only reads files. Watch for students who raise the score by removing the hook script but leave the hook entry (the checker follows the script, so an entry pointing at a missing script passes: ask why), and for students who treat the checker's predictions as observations.
+The attack script's network target is `example.com:80`, a harmless public name. Unconfirmed: the entry format of `sandbox.excludedCommands` (the checker passes an empty or absent list), how a relative path in `sandbox.filesystem` is resolved (the answer key uses `.` and `./config/secrets.env`; if it fails on your image, use absolute paths), and how loopback traffic behaves under the sandbox's network proxy (which is why the default target is not loopback). Rehearse the whole lab on the class image, including the AppArmor step on Ubuntu 24.04 and later and a container check. If the image runs in a container, bubblewrap may fail with "Operation not permitted", the fix steps are not in the docs read, and `enableWeakerNestedSandbox` weakens isolation, so decide before class. Part A can always be scored without a working sandbox, because it only reads files. Watch for students who raise the score by removing the hook script but leave the hook entry: the checker fails that case and names the script it cannot read, so the fix is to remove the hook entry as well, and the question to ask is what a hook entry pointing at a file nobody can review is worth. Watch too for students who treat the checker's predictions as observations.

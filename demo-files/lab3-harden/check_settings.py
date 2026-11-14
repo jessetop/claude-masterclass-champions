@@ -8,21 +8,32 @@ Scores 60 points (Part A). Part B is the live attack script (40 points, attack_s
 It also prints the attack outcomes the configuration PREDICTS. A prediction is not an observation:
 only the live script run inside a Claude Code session, with the sandbox active, shows what really happens.
 
+Path entries are judged by where they resolve, not by how they are spelled: `~`, `$HOME`,
+`${CLAUDE_PROJECT_DIR}` and a trailing `*` or `**` are expanded first, then compared with
+PATH_TO_PROJECT. So `.`, `./`, `~/work/report-archiver` and the absolute path of the project
+you are checking all count as the project folder, and `~`, `/`, `..` and `/home/you` do not.
+Point PATH_TO_PROJECT at the project the settings file belongs to, or the comparison is meaningless.
+
 Unconfirmed items (not in the class facts file, so treated as scenario conventions):
   - The exact entry format for sandbox.excludedCommands. This checker passes it when the list is empty or absent.
-  - How a relative path in sandbox.filesystem is resolved. This checker only looks for the words
-    "secrets" and ".ssh" in denyRead entries.
+  - How a relative path in sandbox.filesystem is resolved. This checker resolves relative entries
+    against PATH_TO_PROJECT, and also accepts a denyRead entry that merely names "secrets".
 Standard library only.
 """
+import io
 import json
 import os
 import re
 import sys
+import tokenize
 
-APPROVED_DOMAINS = {"pypi.org", "files.pythonhosted.org", "api.example.com"}
+APPROVED_DOMAINS = {"pypi.org", "files.pythonhosted.org"}
 APPROVED_SERVERS = {"docs-search", "ticket-bridge"}
-BROAD_WRITE = {"~", "/", "*", "..", "../", "$home", "%userprofile%", "~/", "**"}
+BROAD_WRITE = {"~", "/", "*", "..", "../", "$home", "${home}", "%userprofile%", "~/", "**", "/*", ""}
 NETWORK_WORDS = re.compile(r"urllib|requests|http\.client|socket|curl|wget|urlopen")
+SCRIPT_EXTS = (".py", ".sh", ".bash", ".zsh", ".js", ".mjs", ".cjs", ".ts", ".rb", ".pl", ".ps1")
+# attack_simulation.py attempt 2 connects here by default (--net-target changes it).
+NET_TARGET = "example.com"
 
 
 def low(s):
@@ -45,6 +56,77 @@ def flat(items):
     return [low(x) for x in (items or []) if isinstance(x, str)]
 
 
+def raw(items):
+    return [x.strip() for x in (items or []) if isinstance(x, str)]
+
+
+def norm(path):
+    return os.path.normcase(os.path.normpath(os.path.abspath(path)))
+
+
+def resolve(entry, root_abs):
+    """Resolve a settings path entry to an absolute path.
+
+    Expands ~, $VAR and ${CLAUDE_PROJECT_DIR}, drops trailing glob segments (./reports/** ->
+    ./reports) and resolves a relative entry against root. Returns None when the entry names no
+    place at all ("*", "") or still holds a variable this machine cannot expand.
+    """
+    s = str(entry).strip().strip('"').strip("'")
+    s = s.replace("${CLAUDE_PROJECT_DIR}", root_abs).replace("$CLAUDE_PROJECT_DIR", root_abs)
+    s = os.path.expandvars(s)
+    s = os.path.expanduser(s)
+    if "$" in s or "%" in s:
+        return None  # an unexpanded variable: this checker cannot say where it points
+    parts = re.split(r"[/\\]", s)
+    while parts and "*" in parts[-1]:
+        parts.pop()
+    s = "/".join(parts)
+    if not s.strip("/\\ "):
+        return None
+    if not os.path.isabs(s):
+        s = os.path.join(root_abs, s)
+    return norm(s)
+
+
+def inside(path, base):
+    """True when path is base itself or sits under base."""
+    if not path or not base:
+        return False
+    return path == base or path.startswith(base.rstrip("/\\") + os.sep)
+
+
+def code_text(path):
+    """File text with comments, and Python docstrings, blanked out so prose cannot trip a match.
+
+    Character positions are preserved, so code reads exactly as written: only the characters
+    inside a comment or a triple-quoted string are replaced with spaces.
+    """
+    with open(path, encoding="utf-8", errors="replace") as f:
+        src = f.read()
+    if not path.lower().endswith(".py"):
+        return re.sub(r"(?m)^\s*#.*$", "", src)
+    spans = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+            quoted = tok.type == tokenize.STRING and tok.string.lstrip("rbfuRBFU")[:3] in ('"""', "'''")
+            if tok.type == tokenize.COMMENT or quoted:
+                spans.append((tok.start, tok.end))
+    except (tokenize.TokenError, IndentationError, SyntaxError, ValueError):
+        return src
+    lines = [list(line) for line in src.splitlines(True)]
+    for (srow, scol), (erow, ecol) in spans:
+        for row in range(srow, erow + 1):
+            if not 1 <= row <= len(lines):
+                continue
+            chars = lines[row - 1]
+            start = scol if row == srow else 0
+            end = ecol if row == erow else len(chars)
+            for i in range(start, min(end, len(chars))):
+                if chars[i] != "\n":
+                    chars[i] = " "
+    return "".join("".join(chars) for chars in lines)
+
+
 def hook_commands(cfg):
     out = []
     for groups in (cfg.get("hooks") or {}).values():
@@ -55,11 +137,24 @@ def hook_commands(cfg):
     return out
 
 
+def deny_parts(entry):
+    """'read(./.env.*)' -> ('read', './.env.*'). Entries without parentheses keep an empty pattern."""
+    m = re.match(r"^([a-z_]+)\s*\((.*)\)\s*$", entry.strip())
+    if m:
+        return m.group(1), m.group(2).strip()
+    return entry.strip(), ""
+
+
+def base_name(pattern):
+    return re.split(r"[/\\]", pattern.strip().strip('"').strip("'"))[-1]
+
+
 def main():
     if len(sys.argv) != 2:
         print(__doc__)
         sys.exit(2)
     root = sys.argv[1]
+    root_abs = norm(root)
     try:
         with open(os.path.join(root, ".claude", "settings.json"), encoding="utf-8") as f:
             cfg = json.load(f)
@@ -87,25 +182,54 @@ def main():
     dl = flat(domains)
     bad = [d for d in dl if d not in APPROVED_DOMAINS]
     check("network.allowedDomains is a non-empty list of approved domains only", 7,
-          bool(dl) and not bad, "allowedDomains = %r; not approved: %r" % (domains, bad))
+          bool(dl) and not bad,
+          "allowedDomains = %r; not on the approved list %r: %r" % (domains, sorted(APPROVED_DOMAINS), bad))
+    # A wildcard of any shape ("*", "*.com", "*.example.com") defeats the list.
+    permissive = [d for d in dl if "*" in d or d == NET_TARGET]
 
     aw = find(sb, "allowWrite")
-    awl = flat(aw)
-    broad = [x for x in awl if x in BROAD_WRITE or x.startswith("~") or (x.startswith("/") and len(x) <= 5)]
-    check("filesystem.allowWrite grants no broad path (home, root, parent)", 5, not broad,
-          "allowWrite = %r; too broad: %r" % (aw, broad))
-    dr = flat(find(sb, "denyRead"))
-    sec = any("secrets" in x for x in dr)
-    ssh = any(".ssh" in x for x in dr)
+    awl = raw(aw)
+    broad = []
+    for entry in awl:
+        if low(entry) in BROAD_WRITE:
+            broad.append(entry)
+            continue
+        target = resolve(entry, root_abs)
+        if target is None or not inside(target, root_abs):
+            broad.append(entry)
+    check("filesystem.allowWrite stays inside the project folder", 5, not broad,
+          "allowWrite = %r; these do not resolve inside the project you are checking (%s): %r. "
+          "Name the project folder itself (\".\" is simplest, or its absolute path, or "
+          "~/work/report-archiver); home, \"/\", \"..\" and any folder above the project are too broad."
+          % (aw, root, broad))
+
+    dr = raw(find(sb, "denyRead"))
+    drl = [low(x) for x in dr]
+    secrets_abs = norm(os.path.join(root, "config", "secrets.env"))
+
+    def covers_secrets(entry):
+        """True when the entry denies the secrets file directly or as part of a folder inside the project."""
+        target = resolve(entry, root_abs)
+        if target is None or target == root_abs or not inside(target, root_abs):
+            return False  # outside the project, or the whole project (which stops the tool working)
+        return inside(secrets_abs, target)
+
+    sec = any("secrets" in x for x in drl) or any(covers_secrets(x) for x in dr)
+    ssh = any(".ssh" in x for x in drl)
     check("sandbox filesystem.denyRead covers the secrets file and ~/.ssh (this covers shell commands)", 5, sec and ssh,
-          "denyRead = %r (secrets file: %s, ssh: %s)" % (dr, sec, ssh))
+          "denyRead = %r (secrets file: %s, ssh: %s). Deny the secrets file itself (./config/secrets.env) "
+          "or the folder holding it (./config), plus ~/.ssh." % (dr, sec, ssh))
     dw = flat(find(sb, "denyWrite"))
     check("filesystem.denyWrite protects .claude and .mcp.json", 3,
           any(".claude" in x for x in dw) and any(".mcp.json" in x for x in dw), "denyWrite = %r" % dw)
 
+    read_denies = [deny_parts(x)[1] for x in deny if deny_parts(x)[0] == "read"]
+    deny_secrets = any("secrets" in p for p in read_denies)
+    deny_dotenv = any(base_name(p).startswith(".env") for p in read_denies)
     check("permissions.deny has Read rules for the secrets file and .env (this covers Claude's file tools)", 4,
-          any(x.startswith("read") and "secrets" in x for x in deny) and any(x.startswith("read") and ".env" in x for x in deny),
-          "deny = %r" % deny)
+          deny_secrets and deny_dotenv,
+          "deny = %r (secrets file: %s, .env: %s). \".env\" has to be its own rule: a rule for "
+          "secrets.env does not cover it. Add Read(./.env) and Read(./.env.*)." % (deny, deny_secrets, deny_dotenv))
     check("permissions.deny blocks curl and wget", 3,
           any("curl" in x for x in deny) and any("wget" in x for x in deny), "deny = %r" % deny)
     blanket = [x for x in allow if x in ("bash", "bash(*)", "bash(*:*)", "*")]
@@ -121,18 +245,36 @@ def main():
           "declared in .mcp.json = %r; not approved: %r" % (sorted(declared), sorted(declared - APPROVED_SERVERS)))
 
     net_hooks = []
+    unreadable = []
     for cmd in hook_commands(cfg):
-        for token in re.findall(r"[\w./${}-]+\.py", cmd):
-            path = token.replace("${CLAUDE_PROJECT_DIR}", root)
-            path = path if os.path.isabs(path) else os.path.join(root, path)
+        if NETWORK_WORDS.search(cmd):
+            net_hooks.append("the hook command itself: %s" % cmd.strip())
+        for token in re.findall(r'"[^"]*"|\'[^\']*\'|\S+', cmd):
+            token = token.strip('"').strip("'")
+            if not token or token.startswith("-") or token.startswith(">"):
+                continue
+            is_script = token.lower().endswith(SCRIPT_EXTS)
+            path = resolve(token, root_abs)
+            if not is_script:
+                # follow an extensionless script only when it really is a file in the project
+                if path is None or not inside(path, root_abs) or not os.path.isfile(path) or "/" not in token.replace("\\", "/"):
+                    continue
+            if path is None or not os.path.isfile(path):
+                unreadable.append(token)
+                continue
             try:
-                with open(path, encoding="utf-8") as f:
-                    if NETWORK_WORDS.search(f.read()):
-                        net_hooks.append(token)
+                if NETWORK_WORDS.search(code_text(path)):
+                    net_hooks.append(token)
             except OSError:
-                pass
-    check("hooks: no hook script reaches the network (hooks run OUTSIDE the sandbox)", 4, not net_hooks,
-          "hook scripts with network calls: %r" % net_hooks)
+                unreadable.append(token)
+    hook_detail = []
+    if net_hooks:
+        hook_detail.append("network calls in: %r" % net_hooks)
+    if unreadable:
+        hook_detail.append("cannot read the script this hook runs: %r - if the script is gone, remove "
+                           "the hook entry too; if it is still wanted, restore it so it can be reviewed" % unreadable)
+    check("hooks: no hook command or hook script reaches the network (hooks run OUTSIDE the sandbox)", 4,
+          not net_hooks and not unreadable, "; ".join(hook_detail))
 
     total = 0
     print("PART A: static checklist")
@@ -143,21 +285,48 @@ def main():
             print("            %s" % detail)
     print("  PART A SCORE: %d / 60\n" % total)
 
-    net_ok = enabled and bool(dl) and "*" not in dl
-    read_ok = enabled and sec
-    write_ok = enabled and not broad
+    if not enabled:
+        why = "will succeed: the sandbox is off"
+        write_why = read_why = net_why = why
+    else:
+        write_why = ("blocked if the sandbox starts" if not broad
+                     else "will succeed: allowWrite reaches outside the project (%r)" % broad)
+        read_why = ("blocked if the sandbox starts" if sec
+                    else "will succeed: denyRead does not cover config/secrets.env")
+        if not dl:
+            net_why = "will succeed: there is no allowedDomains list to limit the connection"
+        elif permissive:
+            net_why = "will succeed: %r in allowedDomains still permits %s" % (permissive, NET_TARGET)
+        else:
+            net_why = "blocked if the sandbox starts"
+    if excl and enabled:
+        # The attack script is run as `python3 attack_simulation.py` from the Bash tool, so anything
+        # excluded from the sandbox can put the script itself outside it.
+        write_why = read_why = net_why = "not blocked: a command is excluded from the sandbox (note below)"
     try:
-        with open(os.path.join(root, "app.py"), encoding="utf-8") as f:
-            vulnerable = "os.system(" in f.read()
+        app_src = code_text(os.path.join(root, "app.py"))
     except OSError:
-        vulnerable = True
+        app_src = None
+    if app_src is None:
+        inject_why = "will succeed: app.py could not be read, so the injection cannot be ruled out"
+    elif re.search(r"os\s*\.\s*system\s*\(|shell\s*=\s*True", app_src):
+        if "shlex.quote" in app_src or "shlex.join" in app_src:
+            inject_why = ("unclear: app.py still hands the name to a shell but quotes it with shlex. "
+                          "Attempt 4 is scored live - run the attack script and record what happens")
+        else:
+            inject_why = ("will succeed: app.py still builds a shell command, and a sandbox does not "
+                          "stop a command inside the working directory")
+    else:
+        inject_why = "no shell command built from the name found in app.py"
     print("PREDICTED attack outcomes (a prediction, not an observation)")
-    print("  1 write outside the working directory : %s" % ("blocked if the sandbox starts" if write_ok else "will succeed"))
-    print("  2 disallowed destination              : %s" % ("blocked if the sandbox starts" if net_ok else "will succeed"))
-    print("  3 read the secrets file from a script : %s" % ("blocked if the sandbox starts" if read_ok else "will succeed"))
-    print("  4 command injection in app.py         : %s" % (
-        "will succeed: app.py still builds a shell command, and a sandbox does not stop a command inside the working directory" if vulnerable
-        else "no os.system found in app.py"))
+    print("  1 write outside the working directory : %s" % write_why)
+    print("  2 disallowed destination              : %s" % net_why)
+    print("  3 read the secrets file from a script : %s" % read_why)
+    print("  4 command injection in app.py         : %s" % inject_why)
+    if excl:
+        print("  excludedCommands = %r. The attack script is run as `python3 attack_simulation.py`," % excl)
+        print("  so a command excluded from the sandbox can leave the script itself unsandboxed, and")
+        print("  attempts 1 to 3 cannot be counted as blocked. Empty the list and run this again.")
     print("  Hook scripts and MCP servers are not limited by the sandbox, so the checklist reads them instead.")
 
 

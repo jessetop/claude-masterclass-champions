@@ -121,3 +121,95 @@ root-writing demos (2 and 5) have symmetric install and remove scripts that back
 restore a pre-existing file and clean up the server directory; and every demo marks its
 own unconfirmed items, which is better discipline than the labs started with.
 
+---
+
+## Pass 3 — Labs 2 to 6, audited and fixed (2026-11-14)
+
+Five labs audited in parallel, every finding then handed to a separate agent whose job
+was to **refute** it. 65 findings raised, **45 confirmed, 20 refuted**.
+
+The refutations are the reason the second stage exists. They included a finding built on
+evidence the verifier could not reproduce at all and labelled fabricated; one whose
+premise was contradicted by the lab's own text; three that reported a documented,
+deliberate design as a bug; and one disproved by running the locally installed Claude
+Code binary to check how permission rules actually match. Acting on those would have
+broken working behaviour to fix problems that did not exist.
+
+### The best defect in the set
+
+Lab 2's evidence section awards 20 points for pasted output proving the student ran
+`claude plugin validate`, `claude plugin details` and `claude plugin eval`. The validate
+row read:
+
+```python
+re.search("claude plugin validate", text) and \
+re.search("(passed|valid|success|no errors|exit(ed)? (code )?0)", text, re.I)
+```
+
+**`valid` is a substring of `validate`.** The second condition is satisfied by the exact
+string the first condition requires, so the "and it passed" half of the check was dead
+code and could never fail. The other two rows fell the same way: "could not compute token
+cost" contains `token cost`, and "0 of 6 cases fail to even start" matches on `fail`.
+
+Measured: an evidence file whose every line records total failure —
+`ERROR: 3 errors found, plugin is broken, nothing works` — scored the full 20/20 and took
+the lab to **100/100**, while the scorer printed the literally false line
+`[PASS] 8/8 Evidence: validate output pasted and it passed`.
+
+### The shape of the other 44
+
+Almost all of them are one of two failures, and the split is roughly even:
+
+**A correct answer that differs from the shipped solution is punished.** Writing
+`$CLAUDE_PLUGIN_ROOT` without braces costs 30 of 100 in Lab 2 — the identical defect
+already fixed in Lab 1, in a different file. Setting `allowWrite` to
+`~/work/report-archiver`, the exact path Lab 3 Step 1 tells the student to create, is
+rejected. Naming a Lab 4 configuration `01` the way the lab text and `apply_config.sh`
+both name it costs up to 38 of 65. Writing a C4 finding as "ex-employee" instead of
+"departed" scores 0 of 12 in Lab 5. Re-saving `measure.csv` from Excel scores 0 in Lab 6.
+
+**A wrong or empty answer is rewarded.** Eight rows of placeholder junk score a perfect
+65/65 in Lab 4, and Step 4 of that lab — fifteen minutes of work — can be skipped
+entirely without losing a point. Lab 3's planted `excludedCommands` hole still makes the
+checker predict all three sandbox attacks blocked. Lab 5 has one finding collecting
+points for planted problems the student never reported, and a clean-repository penalty
+that cannot be lost.
+
+### The fixes, and what they cost
+
+62 changes applied across the five scorers and their lab texts. Every lab still
+discriminates: `python3 testing/smoke.py` reports the untouched starter low and the
+shipped answer key full on all six.
+
+**But the regression agents found about twenty NEW false passes**, and they are the
+reason that stage existed. Closing a false fail by widening a check is easy; widening it
+too far turns a scorer into a rubber stamp. Every lab came back `CONCERNS`.
+
+The worst is Lab 5. Its matcher was widened with alternatives like `terminat`, `leave`
+and `individual` — all of which are *fix* verbs carrying no identification signal. A
+submission that never joins `hr_departures.csv`, never mentions a departure, and lists
+four bare names as its priority order now scores **52/100**, with C4 and C6 at full
+marks. The original defect was real — "ex-employee" should not score zero — but the cure
+went too far.
+
+Lab 6's is the sharpest single case: the stale-instruction check now excuses a stale term
+if any prohibition word appears in the same sentence, so a student who resolves the lab's
+headline trap **the wrong way** —
+`Run the tests with nosetests, not python3 -m pytest -q` — scores 10/10 for "no stale
+instruction remains" and 15/15 on facts, because the banned token satisfies the facts
+regex too.
+
+Lab 2 gained two: a basename fallback awards 22 points to a hook pointing at a script
+that does not exist in the plugin — while `plugin_lint.py`, changed in the same batch,
+correctly fails it — and grading "the best-scoring file in `commands/`" lets a scratch
+cheat-sheet carry the command row while the real command is still the untouched TODO.
+
+Lab 4 gained one (a digit anywhere in the defense cell escapes the configuration check)
+and Lab 3 gained two, both defensible (commented-out code, and deliberate `exec()`
+obfuscation no student would write).
+
+These are recorded here rather than quietly fixed because the pattern matters: **this
+material's scorers fail in both directions, and fixing one direction without testing the
+other just moves the defect.** The next pass tightens each of them with a two-sided test —
+the new wrong answer must fail, and the original right answer must still pass.
+

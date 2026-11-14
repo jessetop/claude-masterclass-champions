@@ -22,6 +22,17 @@ from pathlib import Path
 MAX_DESCRIPTION = 300          # lab rule of thumb, not a product limit
 IGNORED_AGENT_FIELDS = ("permissionMode", "hooks", "mcpServers", "initialPrompt")   # UNCONFIRMED in the class facts: reported as WARN only
 WRITE_TOOLS = {"Edit", "Write", "Bash", "NotebookEdit"}
+# ${CLAUDE_PLUGIN_ROOT} and $CLAUDE_PLUGIN_ROOT expand the same way, so both are accepted.
+PLUGIN_ROOT_VAR = r"\$\{?CLAUDE_PLUGIN_ROOT\}?"
+# A TODO the author left behind, not a mention of the word: the hook script lints
+# RELEASE_NOTES.md for TODO, so a command that documents that rule is not a defect.
+TODO_MARKER = re.compile(
+    r"(?mi)^\s{0,8}(?:[-*+>]\s*|#{1,6}\s*)?TODO\b\s*[:\-]"
+    r"|TODO:\s"
+    r"|\bTODO\b[^\n]{0,30}\b(?:write|fill in|finish|complete)\b"
+)
+BLOCK_SCALAR = re.compile(r"^[|>][+-]?\d*$")
+PLACEHOLDER_NAME = re.compile(r"(?i)^(your name|yourname|name here|firstname lastname|todo|tbd|placeholder)$")
 results = []
 
 
@@ -30,16 +41,62 @@ def out(level, msg):
     print(f"[{level:<4}] {msg}")
 
 
+def placeholder_person(block):
+    """True when an author/owner field still holds the template's placeholder name."""
+    value = block.get("name") if isinstance(block, dict) else block
+    return bool(PLACEHOLDER_NAME.match(str(value or "").strip()))
+
+
+def _unquote(v):
+    v = v.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        v = v[1:-1]
+    return v.strip()
+
+
+def parse_frontmatter(block):
+    """Small YAML-mapping reader: scalars, quoted scalars, folded/literal blocks, and lists.
+
+    A list (block `- item` lines, or inline `[a, b]`) and a folded `>-` block come back as a
+    joined string, so `tools: [Read, Grep]`, a block list and `tools: Read, Grep` read alike,
+    and a folded description is not mistaken for a two-character one.
+    """
+    fields = {}
+    src = block.splitlines()
+    i = 0
+    while i < len(src):
+        ln = src[i]
+        i += 1
+        if not ln.strip() or ln.lstrip().startswith("#"):
+            continue
+        if ln.startswith((" ", "\t", "-")) or ":" not in ln:
+            continue
+        key, val = ln.split(":", 1)
+        key, val = key.strip(), val.strip()
+        items, cont = [], []
+        while i < len(src) and (not src[i].strip() or src[i].startswith((" ", "\t", "-"))):
+            nxt = src[i].strip()
+            i += 1
+            if not nxt:
+                continue
+            if nxt.startswith("- "):
+                items.append(_unquote(nxt[2:]))
+            elif nxt != "-":
+                cont.append(nxt)
+        if val.startswith("[") and val.endswith("]"):
+            val = ", ".join(_unquote(part) for part in val[1:-1].split(",") if part.strip())
+        elif items and (not val or BLOCK_SCALAR.match(val)):
+            val = ", ".join(items)
+        elif cont and (not val or BLOCK_SCALAR.match(val)):
+            val = " ".join(cont)
+        fields[key] = _unquote(val)
+    return fields
+
+
 def frontmatter(path):
     text = Path(path).read_text(encoding="utf-8")
     m = re.match(r"---\s*\n(.*?)\n---\s*\n", text, re.S)
-    fields = {}
-    if m:
-        for ln in m.group(1).splitlines():
-            if ":" in ln and not ln.startswith((" ", "\t", "-")):
-                k, v = ln.split(":", 1)
-                fields[k.strip()] = v.strip()
-    return fields, bool(m)
+    return (parse_frontmatter(m.group(1)) if m else {}), bool(m)
 
 
 def main(argv):
@@ -56,13 +113,17 @@ def main(argv):
     root = Path(args[0])
     manifest_path = root / ".claude-plugin" / "plugin.json"
     name = None
+    manifest = {}
     if not manifest_path.exists():
         out("FAIL", "No .claude-plugin/plugin.json")
     else:
         try:
-            name = json.loads(manifest_path.read_text(encoding="utf-8")).get("name")
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            name = manifest.get("name")
         except json.JSONDecodeError as exc:
             out("FAIL", f"plugin.json is not valid JSON: {exc}")
+        if placeholder_person(manifest.get("author")):
+            out("WARN", "plugin.json still names the template author. Put the owner of the plugin in `author`, so a team can tell who to ask about it.")
         if name:
             out("ok", f"Manifest name is '{name}'")
         elif manifest_path.exists():
@@ -77,17 +138,21 @@ def main(argv):
         except json.JSONDecodeError as exc:
             data = {}
             out("FAIL", f"hooks/hooks.json is not valid JSON: {exc}")
+        clean = True
         if re.search(r"[A-Za-z]:[\\/]|/(home|Users)/", text):
+            clean = False
             out("FAIL", "hooks/hooks.json contains a fixed absolute path. Use ${CLAUDE_PLUGIN_ROOT}.")
         commands = [h.get("command", "") for ev in (data.get("hooks") or {}).values()
                     for grp in ev for h in grp.get("hooks", [])]
         for c in commands:
-            if "scripts/" in c and "${CLAUDE_PLUGIN_ROOT}" not in c:
+            if "scripts/" in c and not re.search(PLUGIN_ROOT_VAR, c):
+                clean = False
                 out("FAIL", f"Hook command does not use ${{CLAUDE_PLUGIN_ROOT}}: {c}")
-            for m in re.finditer(r"\$\{CLAUDE_PLUGIN_ROOT\}/([\w./-]+)", c):
+            for m in re.finditer(PLUGIN_ROOT_VAR + r"/([\w./-]+)", c):
                 if not (root / m.group(1)).exists():
+                    clean = False
                     out("FAIL", f"Hook points at {m.group(1)}, which does not exist in the plugin")
-        if commands and "FAIL" not in results[-3:]:
+        if commands and clean:
             out("ok", "Hook commands use the plugin path variable and point at real files")
     else:
         out("WARN", "No hooks/hooks.json")
@@ -120,8 +185,8 @@ def main(argv):
             out("WARN", f"{f.name}: description is only {len(d)} characters. A vague description can stop the command from being chosen.")
         elif len(d) > MAX_DESCRIPTION:
             out("WARN", f"{f.name}: description is {len(d)} characters. It is in the context window on every turn.")
-        if "TODO" in f.read_text(encoding="utf-8"):
-            out("FAIL", f"{f.name}: still contains TODO")
+        if TODO_MARKER.search(f.read_text(encoding="utf-8")):
+            out("FAIL", f"{f.name}: still contains a TODO line of its own. Naming TODO as text the format hook rejects is fine; leaving 'TODO: write ...' is not.")
 
     # root CLAUDE.md
     if (root / "CLAUDE.md").exists():
@@ -130,12 +195,19 @@ def main(argv):
     # evals
     ev = root / "evals"
     if ev.exists():
+        cases = 0
+        clean_evals = True
         for case in sorted(p for p in ev.iterdir() if p.is_dir() and p.name != "results"):
             has_case = (case / "prompt.md").exists() or (case / "case.yaml").exists()
             has_grader = any((case / "graders").glob("*.md")) if (case / "graders").exists() else False
+            cases += 1 if has_case else 0
             if has_case and not has_grader:
+                clean_evals = False
                 out("FAIL", f"evals/{case.name}: no grader, so the case fails to load")
-        out("ok", "Every eval case has at least one grader") if "FAIL" not in results[-1:] else None
+        if not cases:
+            out("WARN", "evals/ holds no case with a prompt.md or case.yaml. A suite with nothing in it proves nothing: put the deleted cases back.")
+        elif clean_evals:
+            out("ok", f"Every eval case has at least one grader ({cases} cases)")
 
     # marketplace
     if mk:
@@ -143,8 +215,11 @@ def main(argv):
         if not mf.exists():
             out("FAIL", f"No marketplace.json at {mf}")
         else:
-            entries = json.loads(mf.read_text(encoding="utf-8")).get("plugins", [])
+            catalog = json.loads(mf.read_text(encoding="utf-8"))
+            entries = catalog.get("plugins", [])
             names = [e.get("name") for e in entries]
+            if placeholder_person(catalog.get("owner")):
+                out("WARN", "marketplace.json still names the template owner. Put your team in `owner`.")
             if name and name not in names:
                 out("FAIL", f"No marketplace entry named '{name}' (entries: {names}). Entry name and manifest name must match.")
             for e in entries:

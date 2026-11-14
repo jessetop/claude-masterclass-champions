@@ -10,7 +10,7 @@
 
 **Files:** `$FILES/lab5-audit`: `harbor-org/` (the sample), `findings-template.md`, `check_findings_format.py`.
 
-**Context:** `harbor-org` is a fictional company with three repositories, a managed settings file and three inventories in `org/`: credentials, CI secrets and departures. The audit date is 2026-10-12. Some of what you read is clean on purpose, and reporting a clean item as a defect costs points. Report the pattern and not the value. Every secret is a placeholder. A key helper (`apiKeyHelper`) returns a key from a script, and is meant for dynamic or rotating credentials. `claude setup-token` prints a one-year token that you set as `CLAUDE_CODE_OAUTH_TOKEN`, and it is for model requests only. Credentials are chosen by precedence, with cloud provider variables first, then an auth token, then `ANTHROPIC_API_KEY`, then a key helper, then the token variable, and then your sign-in. Credentials on Linux are in `~/.claude/.credentials.json` with mode 0600.
+**Context:** `harbor-org` is a fictional company with three repositories, a managed settings file and three inventories in `org/`: credentials, CI secrets and departures. The audit date is 2026-10-12. Some of what you read is clean on purpose: one of the three repositories is clean, and reporting it as a defect costs the 8 points in the rubric below. Report the pattern and not the value. Every secret is a placeholder. A key helper (`apiKeyHelper`) returns a key from a script, and is meant for dynamic or rotating credentials. `claude setup-token` prints a one-year token that you set as `CLAUDE_CODE_OAUTH_TOKEN`, and it is for model requests only. Credentials are chosen by precedence, with cloud provider variables first, then an auth token, then `ANTHROPIC_API_KEY`, then a key helper, then the token variable, and then your sign-in. Credentials on Linux are in `~/.claude/.credentials.json` with mode 0600.
 
 **Steps:**
 
@@ -29,8 +29,9 @@
    - Acceptance criteria: for each credential, the owner, its lifetime, where it is used, how it is rotated, and what happens when its owner leaves.
    - Hints: a credential owned by a person becomes a problem on the day that person leaves. Say who owns a credential after it is replaced.
 
-5. **Compare three options in a paragraph.** Goal: what you would use for automation, and why.
+5. **Compare three options in a paragraph.** Goal: what you would use for automation, and why. Write it in the template's `## Credential options for automation` section.
    - Acceptance criteria: a personal token, a shared key and a federated or service identity, each with one strength and one weakness. Mark anything you could not confirm from the course materials as unconfirmed.
+   - This step is discussion: it carries no rubric points and the format checker does not look at it, but your facilitator reads it and will push back on anything asserted without a source.
 
 6. **Check the format.** Run `python3 check_findings_format.py findings.md harbor-org/org/credentials_inventory.csv`.
 

@@ -8,7 +8,7 @@
 
 **Learning objective:** Measure what loads into the context window at startup, trim a `CLAUDE.md` and a plugin's descriptions, measure again, and write two rules for your team. Time: take-home, no set time.
 
-**Files:** `$FILES/lab6-context`: `shopkit/` (a sample project with a bloated `CLAUDE.md`), `shopkit-plugin/` (a plugin with long descriptions), `original/` and `original-plugin/` (untouched copies for the checker), `measure.csv`, `RULES-LEARNED.md`, `check_lab6.py`.
+**Files:** `$FILES/lab6-context`: `shopkit/` (a sample project with a bloated `CLAUDE.md`), `shopkit-plugin/` (a plugin with long descriptions), `original/` (the untouched `CLAUDE.md` the checker measures your trimmed one against) and `original-plugin/` (an untouched copy of the plugin, so you can compare descriptions before and after and restore one you cut too far), `measure.csv`, `RULES-LEARNED.md`, `check_lab6.py`.
 
 **Context:** At startup, before you type anything, `CLAUDE.md`, auto memory, MCP tool names and skill descriptions are already in the context window, and each file Claude reads adds to it. `/context` shows a live breakdown by category with suggestions, including which `CLAUDE.md` and memory files loaded. `/memory` opens and edits them. `/compact` replaces the conversation with a summary, and `/clear` starts fresh. Every enabled plugin puts the names and descriptions of its commands, skills and agents in the context window on every turn, and `claude plugin details <name>` prints a projected token cost. A shorter description can stop a command being chosen, so test it after you shorten it. This lab does not quote any size, threshold or limit. For how `CLAUDE.md` files are found and loaded, read the memory documentation (https://code.claude.com/docs/en/memory). For model and context options, read the model configuration documentation (https://code.claude.com/docs/en/model-config). For what fills the window, see https://code.claude.com/docs/en/context-window.
 
@@ -32,6 +32,7 @@
 
 5. **Write two rules (about 10 minutes).** Goal: two rules for your own team in `RULES-LEARNED.md`.
    - Acceptance criteria: exactly two numbered rules, each starting with a verb and ending with a "because" clause that points at something you measured.
+   - Hints: `1.` or `1)` both count, and a rule may wrap onto an indented second line. Put evidence or notes under a heading below the two rules so they are not read as a third rule.
 
 6. **Check it.** From `$FILES/lab6-context`, run `python3 check_lab6.py`.
 
@@ -39,7 +40,7 @@
 
 **Common problems:**
 
-- You cut the facts that matter: the checker names the missing ones.
+- You cut the facts that matter: the checker names the missing ones, and each one is worth 3 of the 15 points. Wording is yours: the checker accepts any phrasing that keeps the fact.
 - The numbers did not change: compare like with like. `/context` also counts other files that loaded.
 - A description is shorter and the command stopped being chosen: add the trigger back in fewer words.
 - You wrote rules with no measurement behind them: change the because clause to what you saw.
@@ -58,6 +59,6 @@
 | `measure.csv` complete | 15 |
 | Two rules, each with a because clause | 15 |
 
-An untouched project scores about a third of the points. The checker cannot read `/context` output, so the measurement rows are self-reported, and the facilitator may ask to see a screen.
+An untouched project scores about a third of the points. The five-facts row gives 3 points per fact, so one missing fact costs 3 and not 15; every other row is all or nothing. The checker cannot read `/context` output, so the measurement rows are self-reported, and the facilitator may ask to see a screen.
 
 **Facilitator note:** Remove before sharing. The model answer is `facilitator/lab6/solution/` (a trimmed `CLAUDE.md`, four short descriptions, a sample `measure.csv` and sample rules), and it scores 100. Traps planted: two contradictory test commands (`nosetests` and `python3 -m pytest -q`), the stale Python 2.7, Jenkins and FTP uploader instructions, duplicated rules (indentation, integer cents, `.env`), a file tree and a style guide that Claude can read from the code, motivational filler, and four plugin descriptions of 400 to 500 characters that read as keyword stuffing. Only claim what the verified facts support: the contents of `/context`, `/memory`, `/compact` and `/clear`, that the startup load includes `CLAUDE.md`, memory, MCP tool names and skill descriptions, and that `plugin details` prints a projected token cost. Do not quote token counts, auto-compact thresholds or the `CLAUDE.md` load hierarchy: those are not in the docs read, and the lab links to the memory and model configuration pages instead. Unconfirmed: whether command descriptions count toward the plugin's projected cost in the same way as skill descriptions (the docs read say names and descriptions of skills, agents and commands). Watch for students who shorten a description until the command no longer triggers, and who delete every rule to hit the percentage: the five facts check catches the second.

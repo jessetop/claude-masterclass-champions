@@ -27,3 +27,9 @@ Hold back until the audit is submitted. A sample answer is `solution-findings.md
 - `billing-service` has correct `.env` deny rules. Reporting it for C5 is a false positive.
 - The `none` expiry and `never` rotation values are scenario data. Do not teach them as product defaults. A `claude setup-token` token is a one-year token per the docs read, and none appears in the inventory.
 - Federation for automation: only the credential precedence list is in the docs read. Details of setting it up are unconfirmed, so a student answer on federation must say so.
+- Lab step 5 (the three-options paragraph, written in the template's `## Credential options for automation` section) carries no points in the 100 above. Read it and discuss it: the thing to look for is whether the student marked the federation details `unconfirmed`. Do not add or subtract points for it.
+- What `score_audit.py` does and does not look at, so you know where to adjust it by hand:
+  - It accepts `## Finding N`, `### Finding N` and titled headings (`## Finding 1: departed owner`), and both `**Fix:**` and `**Fix**:` label spellings.
+  - Fix credit (3 of the 12) comes only from the **Fix** and **Rotation step** fields, so a fix word that appears only in **What is wrong** earns nothing. For an answer with no bold labels at all it falls back to the whole block.
+  - The 8 points for the clean repository are lost only when a finding's **File and line** field points at `payments-gateway` or `cred-102`. Naming payments-gateway elsewhere in a block (as the clean comparison) is not penalised.
+  - Identification is deliberately word-blind in both directions: it takes "ex-employee", "no longer with us" and "past the 180-day policy" for C4/C6, and "organization-scoped" or "used by both repositories" for C3. If a student identifies a problem in words it still misses, award the points by hand and say so on the sheet.
