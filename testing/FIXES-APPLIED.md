@@ -91,3 +91,33 @@ a legitimate status, but it is not evidence of a control.
   Enforced with no real control, so an untouched charter earns 6 partial points for them
   while correctly scoring 0 on the control check. Generous by 6 points, and the overall
   discrimination (15 against 100) is unaffected.
+
+---
+
+## Pass 2 — demos, and the claim everything else rests on (2026-11-14)
+
+**Demo 9 would have failed live in front of a class.** Its Context said the AppArmor
+setting on Ubuntu 24.04 and later "is off by default". It is on by default, and it is
+what stopped the sandbox on the class image this program tested three times. Its
+Instructor note then sent the instructor to the sysctl and to "add an AppArmor profile
+for `/usr/bin/bwrap`" - both tested, both dead ends. Demo 9 and Demo 3 now point at
+`classroom-sandbox.sh`. `check_env.sh` had the same flaw and printed `[ ok ]` when the
+sysctl was 0 and the profile was still blocking, and that output is shown to the class in
+Demo 9 step 1. It now reports the profile.
+
+**Verified, so nobody re-litigates it:** exit 2 blocks and exit 1 does not. Lab 1 stakes
+30 points of exit-code tests on it and Demo 4 is built entirely on it, so it was worth
+reading in the page rather than trusting the course text. Verbatim from the hooks
+reference: *"Exit with code 2 to block the action... a `PreToolUse` hook blocks the tool
+call... The message that comes with the block is your hook's stderr."* Exit 1 without
+valid JSON is a non-blocking error. Two refinements are now in Demo 4's instructor note
+for the student who asks: a hook that exits 1 but prints valid JSON can still decide the
+outcome through that JSON, and `onFailure: "block"` makes a failing hook block. Neither
+affects the lab, whose starter exits 1 with plain stderr and no JSON.
+
+**Checked and found sound:** all 46 Python files, 31 shell scripts and 38 JSON files
+parse; all 52 `$FILES` references and all 74 relative markdown links resolve; both
+root-writing demos (2 and 5) have symmetric install and remove scripts that back up and
+restore a pre-existing file and clean up the server directory; and every demo marks its
+own unconfirmed items, which is better discipline than the labs started with.
+
