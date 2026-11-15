@@ -74,7 +74,7 @@
 5. **Prove it (about 20 minutes).** Goal: Part B at 40 of 40, observed live.
    - Start `claude` in the project with the sandbox on. Ask Claude to run `python3 attack_simulation.py`. Save the output.
    - Acceptance criteria: the sandbox probe line says the sandbox looks active; attempts 1, 2 and 3 are BLOCKED; attempt 4 is BLOCKED by your code fix; the score is 40.
-   - Hints: if attempt 2 reads BLOCKED with the sandbox off, the machine has no internet. Use the baseline. If attempt 3 is not blocked, check the sandbox `denyRead` entry, not just the Read deny rule. Restart Claude Code after each settings change.
+   - Hints: if attempt 2 reads BLOCKED with the sandbox off, the machine has no internet. Use the baseline. **With the sandbox on, attempt 2 reports a DNS failure — that counts as blocked.** The network proxy refuses the name before any connection is made, so a resolution error is the expected shape of the block, not a separate problem (measured 2026-11-15). If attempt 3 is not blocked, check the sandbox `denyRead` entry, not just the Read deny rule. Restart Claude Code after each settings change.
 
    > **If the session refuses every command**, including the attack script, with
    > `apply-seccomp: ... Permission denied`, then your configuration is correct and this

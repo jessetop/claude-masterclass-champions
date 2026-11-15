@@ -123,10 +123,10 @@ scorer probes, Demos 1, 2, 4, 5 and 10, and Phase 0 provisioning — the image h
 
 ## 7. Logging
 
-Write to `testing/results/run2-*.md` so run 1's files survive untouched. Keep
+Write to `testing/results/run<N>-*.md` so run 1's files survive untouched. Keep
 `00-INDEX.md` current.
 
-Finish with `testing/results/99-summary-run2.md`: what the sandbox state was, what a
+Finish with `testing/results/99-summary-run<N>.md`: what the sandbox state was, what a
 working sandbox settled, which of the four fixes held, the three demos' diagnoses, and
 anything still unobserved. Then run `python3 testing/smoke.py` once more and paste it.
 

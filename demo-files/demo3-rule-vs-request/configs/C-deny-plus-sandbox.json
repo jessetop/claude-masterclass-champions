@@ -9,7 +9,10 @@
     "enabled": true,
     "failIfUnavailable": true,
     "filesystem": {
-      "denyRead": ["__PROJECT__/.env"]
-    }
+      "denyRead": [
+        "__PROJECT__/.env"
+      ]
+    },
+    "allowUnsandboxedCommands": false
   }
 }

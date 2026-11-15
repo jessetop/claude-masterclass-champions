@@ -27,20 +27,33 @@ command -v claude >/dev/null 2>&1 && ok "claude $(claude --version 2>/dev/null |
 if command -v bwrap >/dev/null 2>&1; then ok "bubblewrap (bwrap)"; else bad "bubblewrap not found. Install: sudo apt-get install bubblewrap socat   (or: sudo dnf install bubblewrap socat)"; fi
 command -v socat >/dev/null 2>&1 && ok "socat" || bad "socat not found (see the bubblewrap line for the install command)"
 
-# Report the PROFILE, not the sysctl. The sysctl is the obvious thing to look at and it
-# is the wrong lever: bwrap-userns-restrict stays loaded whatever its value, and it
-# carries "audit deny capability", which beats any allow. A previous version of this
-# script printed [ ok ] when the sysctl was 0 while the profile was still blocking.
+# Report BOTH controls. Measured on the class image 2026-11-15, all four combinations:
+# the sandbox needs the AppArmor profile disabled AND
+# kernel.apparmor_restrict_unprivileged_userns = 0. With only the profile cleared,
+# commands run UNSANDBOXED behind one warning - and an earlier version of this block
+# printed [ ok ] in exactly that state. A check that says you are protected when you are
+# not is worse than no check.
+aa_prof="blocking"
 if [ -e /etc/apparmor.d/disable/bwrap-userns-restrict ]; then
-  ok "AppArmor: bwrap-userns-restrict is disabled, so the sandbox can start"
-  warn "that is machine-wide. Run 'bash classroom-sandbox.sh --off' when you finish."
-elif [ -e /etc/apparmor.d/bwrap-userns-restrict ]; then
-  warn "AppArmor: bwrap-userns-restrict is present and will stop the sandbox starting."
-  warn "  Labs 3 and 4 need it. Switch it off for the lab with:"
+  aa_prof="clear"
+elif [ ! -e /etc/apparmor.d/bwrap-userns-restrict ]; then
+  aa_prof="clear"
+fi
+aa_sysctl="absent"
+if [ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+  aa_sysctl="$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)"
+fi
+if [ "$aa_prof" = "clear" ] && [ "$aa_sysctl" != "1" ]; then
+  ok "sandbox: profile clear, sysctl $aa_sysctl - nothing is blocking it"
+  warn "  verify for real: in a session, 'touch ~/sandbox-probe' must FAIL"
+else
+  warn "sandbox: profile $aa_prof, apparmor_restrict_unprivileged_userns $aa_sysctl"
+  if [ "$aa_prof" = "clear" ]; then
+    warn "  the profile alone is NOT enough - in this state commands run UNSANDBOXED"
+  fi
+  warn "  Labs 3 and 4 need it. Switch both with:"
   warn "    bash \$FILES/setup/classroom-sandbox.sh --on     (and --off afterwards)"
   warn "  Read Lab 3 Step 1 first: it is machine-wide, so it is a decision, not a fix."
-else
-  ok "AppArmor: no bwrap-userns-restrict profile on this machine"
 fi
 
 echo

@@ -516,3 +516,80 @@ in the lab, because it is the real lesson: the defences move the route, not the 
 Also settled by run 2: hooks inherit the shell's environment (`CLAUDE_TOOL_LOG` was
 honoured), and a `case.yaml` path is accepted as an eval target. Both were marked
 unconfirmed in `REHEARSAL.md`.
+
+---
+
+## Pass 9 — run 3: the sandbox finally ran, and it corrected me (2026-11-15)
+
+Run 3, about $2.50. **The sandbox worked for the first time and Lab 3 scored 100/100
+live** — attempts 1 to 3 blocked by the sandbox, 4 by the code fix. Three runs of
+groundwork, and the thing the labs are built on is finally observed.
+
+### `--on` was never enough, and my check said otherwise
+
+The finding of the run. **Two** controls block the sandbox on this image, not one, and
+all four states were measured:
+
+| AppArmor profile | sysctl | `sandbox on` config | `fail-closed` config |
+|---|---|---|---|
+| active (default) | 1 (default) | every command fails `apply-seccomp` | same |
+| **disabled (`--on`)** | **1** | **runs UNSANDBOXED behind one warning** | exits at startup |
+| active | 0 | `apply-seccomp`, same as default | commands fail |
+| disabled | 0 | **works**: probes blocked, pypi 200 | works |
+
+Row two is the damaging one. With only the profile disabled, any configuration without
+`failIfUnavailable` runs commands **unsandboxed** while appearing to work — and
+`classroom-sandbox.sh --check` and `check_env.sh` both reported *"the sandbox can
+start"* in exactly that state. **A check that says you are protected when you are not is
+worse than no check at all**, and that one was mine.
+
+Both scripts now read both controls, `--on` sets both, `--off` restores both, and the
+middle state gets named explicitly rather than reported as success. Verified on Linux
+across all four combinations: only `clear + 0` reports OK.
+
+**And it corrects something I asserted repeatedly.** I carried a conclusion from the
+sister course that the sysctl "does nothing". That is true *in isolation* — changing it
+alone leaves the profile blocking — but I wrote it as though the sysctl were irrelevant,
+and it is not: the image needs both. That claim had reached `classroom-sandbox.sh`,
+`check_env.sh`, Demo 9 and Lab 3. All four are corrected.
+
+### What a working sandbox settled
+
+- **Lab 3: 100/100.** Part B scored 40/40 live. The baseline was REACHABLE, so attempt 2
+  was a real block rather than a machine with no network.
+- **`allowUnsandboxedCommands: false` holds.** On a working sandbox,
+  `dangerouslyDisableSandbox: true` is simply ignored and the command stays sandboxed.
+  With the default, the escape goes to an approval prompt *even when an allow rule
+  matches* — so the lab's claim of "no prompt at all" applies only to the
+  sandbox-cannot-start case. Scoped in the text now.
+- **Loopback is blocked inside the sandbox**: `curl: (7)` under configuration 03, while
+  the same call from the terminal connects. That retires an "unconfirmed" note this
+  material has carried since it was written, and it means a quiet network canary under
+  03 is the control working rather than the payload never trying.
+- **Demo 3 step 5 passes** — `Read` denied by the rule, `cat .env` denied by the sandbox,
+  which is the two-layer lesson demonstrated rather than asserted.
+- **Demo 9 steps 1–4 pass.**
+- **Attempt 2 under the sandbox reads as a DNS failure.** The proxy refuses the name
+  before any connection, so a resolution error *is* the block. Documented, because it
+  otherwise looks like a broken machine.
+
+### Run 2's fixes all held
+
+Demo 6 logged both a `tool_call` and a `blocked` line. Demo 8's Step 4 scores 1.00 as
+written. Demo 7 held, with a new caveat now in the text: the model declines to push to a
+repository with no remote and no `main`, so the scratch repo needs both or the hook never
+gets the chance to block anything.
+
+### Where run 3 corrected my Lab 1 note
+
+The cause was right but the evidence was not: `Registered 0 hooks` is the *plugin* hooks
+line and appears from the project root too, so it proves nothing. Removed. "A delete
+runs" is now "**can** run" — in run 1 it went through, in run 2 Claude Code's own
+approval check happened to stop it, and the lab now says not to count on that, because
+it is not the control being taught.
+
+### Still unobserved
+
+The Lab 4 payload actually firing — 12 runs now, every one stopped by the model — and
+what a student sees at the interactive escape prompt. Both need a human at a terminal
+rather than a headless session.
