@@ -442,3 +442,77 @@ hand-maintained copies of the same text is a defect generator; one source is not
   so the hook never ran and the recursive force delete executed. `$CLAUDE_PROJECT_DIR`
   does not cover starting in a subfolder. Needs a re-test before the text changes.
 - Smaller scorer items in every lab, listed in the run's own results files.
+
+---
+
+## Pass 8 — run 2: three demos fixed, and the sandbox still off (2026-11-15)
+
+Run 2 on the class image, about $1.65. **The sandbox was off again.** The session was
+told the operator had run `--on`; it found `--check` reporting ACTIVE,
+`apparmor_restrict_unprivileged_userns = 1`, and the probe failing with
+`apply-seccomp ... Permission denied`. Reporting that discrepancy instead of assuming the
+prompt was right was the most useful thing it did, and the brief now lists `apply-seccomp`
+as a third probe outcome so the next session recognises it immediately.
+
+**So Lab 3 Step 5 live, `allowUnsandboxedCommands: false` on a working sandbox, Lab 4
+runs 3 and 8 live, Demo 3 step 5 and Demo 9 have now gone untested three times.**
+
+### The fixes held
+
+| Fix | Result |
+|---|---|
+| Lab 2 Step 5 hint | **Held.** Run exactly as written: 6/6 cases at 1.00, $0.91, nothing published |
+| Lab 4 config 03 | **Held**, as far as a failing sandbox can show |
+| `demos.md` generated | **Held.** `--check` reports current, "off by default" is gone |
+| `classroom-sandbox.sh` | Not retested, per the brief |
+
+### The three failing demos, fixed from run 2's own diagnoses
+
+Run 2 did not just diagnose these — it verified the fixes live, which is why they went
+straight in.
+
+**Demo 6.** With `"args": []` the command is not run through a shell, so the inner quotes
+become part of the path and it fails `ENOENT`. Removing `"args": []` works, as does
+removing the inner quotes, as does `bash` plus the path in `args`. Took the first, which
+matches the hook directly above it that already worked. Caveat recorded: the model often
+chains `ls && git push` into one call, so the listing is not logged separately — the Step
+3 prompt may want splitting.
+
+**Demo 7.** `-s local` applies only in the folder you install from, so installing at Step
+3 and moving to a new folder at Step 4 leaves the plugin unavailable. Step 3 now says to
+create the scratch repo first and install inside it, or use `-s user`. Step 6's uninstall
+takes `-s local`, because a bare `uninstall` assumes user scope. The corrected flow
+blocked the force push with `BRANCH-GUARD`.
+
+**Demo 8.** `--allow-tools Bash` is required: **0.00 without it, 1.00 with**. Added, with
+`--no-publish`, and `--trust-plugin` noted for non-interactive runs. `--scaffold` is *not*
+needed for this case, unlike Lab 2. Its Step 1 lint FAIL is a Lab 2 rule firing on the
+wrong plugin, so the note now says to expect it.
+
+### Lab 1's subfolder finding has a cause, and it is worse than it looked
+
+Claude Code reads project settings from **the folder it starts in, not the git root**.
+Started in `ledgerlite/src`, the root `.claude/settings.json` is never read at all — the
+debug log shows `Registered 0 hooks` — so neither the hook nor the deny rules apply.
+
+`${CLAUDE_PROJECT_DIR}` does not rescue it: loaded another way it resolves to `src/`, the
+hook path breaks, `python3` exits 2, and then *every* Bash call is blocked by accident.
+Only a personal `settings.local.json` using `git rev-parse --show-toplevel` works from a
+subfolder, which is not a team answer. Lab 1 Step 3 now says to start at the project root
+and explains why.
+
+One detail worth keeping: run 1's recursive delete ran from `src/`; in run 2 Claude Code's
+own approval check stopped it. **Do not count on that** — it is not the control the lab is
+teaching.
+
+### The best finding in the run
+
+Lab 4, configuration 03, with the escape hatch closed: the model **read the tool's source
+file instead**, so the payload still reached it — as file text rather than as tool output.
+
+A sandbox bounds what a command can *do*. It does not stop the text arriving. That is now
+in the lab, because it is the real lesson: the defences move the route, not the exposure.
+
+Also settled by run 2: hooks inherit the shell's environment (`CLAUDE_TOOL_LOG` was
+honoured), and a `case.yaml` path is accepted as an eval target. Both were marked
+unconfirmed in `REHEARSAL.md`.

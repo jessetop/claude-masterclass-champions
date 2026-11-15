@@ -1,11 +1,11 @@
-# Claude Champion test run 2 — RVC, with the sandbox on
+# Claude Champion test run 3 — RVC, with the sandbox ACTUALLY on
 
 **This is your brief.** Read **[`HANDOFF.md`](HANDOFF.md)** for the rules, the verdict
 vocabulary and the logging format. It governs everything below.
 
-Run 1 (2026-11-14) tested all six labs and ten demos on this image and produced
-`testing/results/`. **Keep those files.** This run is not a repeat: it covers the part
-run 1 could not reach, and checks the fixes that came out of it.
+Runs 1 and 2 (2026-11-14/15) tested all six labs and ten demos on this image. **Keep
+their result files.** This run is not a repeat: it exists for the one thing neither run
+could do.
 
 ---
 
@@ -13,20 +13,24 @@ run 1 could not reach, and checks the fixes that came out of it.
 
 ```bash
 cd ~/Desktop/claude-masterclass-champions   # or wherever you cloned it
-git pull        # you want 7945701 or later
+git pull        # you want 4c05db2 or later
 git log --oneline -1
 ```
 
-Run 1 was at `2a807e7`. Four of its findings are already fixed upstream, and this run
-is partly about confirming that.
+Run 2 was at `3819968`. Every defect it found is now fixed upstream, including all three
+failing demos, so this run confirms those and then does the sandbox work.
 
 ---
 
 ## 1. The sandbox — the whole reason for this run
 
-Run 1's single biggest gap: `classroom-sandbox.sh --on` was never run, so **Labs 3 and 4
-and Demos 3 and 9 have still never been observed with a working sandbox.** Everything
-sandbox-related in run 1 is fallback-path only.
+**Twice now this has not happened.** Run 2 was told the operator had run `--on`, and
+found `--check` reporting ACTIVE, `apparmor_restrict_unprivileged_userns = 1` and the
+probe failing with `apply-seccomp`. So **Labs 3 and 4 and Demos 3 and 9 have still never
+been observed with a working sandbox**, and every sandbox result so far is fallback.
+
+If the probe shows no sandbox a third time, **stop and report that first** — do not
+spend the run re-confirming fallback behaviour that two runs already recorded.
 
 **The operator switches it on before your session starts.** Do not run `--on` yourself.
 Your first job is to establish which state you are in and record it:
@@ -84,28 +88,28 @@ Each came directly from your own findings. Check each and say held or not held.
 
 ---
 
-## 4. Then the three failing demos
+## 4. Confirm the three demo fixes
 
-Run 1 found these and they are **not yet fixed**. Diagnose precisely enough that the fix
-is obvious; do not edit them.
+All three are fixed from run 2's own diagnoses. Perform each and say held or not held.
 
-- **Demo 6** — the logging hook never runs. `"args": []` plus an inner-quoted path gives
-  `ENOENT posix_spawn`. What exact `command`/`args` shape does work on this image?
-- **Demo 7** — the `-s local` install does not carry into the Step 4 scratch repo, and the
-  Step 6 uninstall needs `-s local`. What is the correct scope for each step?
-- **Demo 8** — needs the same eval flags as Lab 2, and its Step 1 lint reports 1 FAIL.
+- **Demo 6** — `"args": []` removed, so the command runs through a shell and the quoted
+  path resolves. Does a `tool_call` line now appear in the log? Note run 2's caveat: the
+  model often chains `ls && git push` into one call, so the listing is not logged
+  separately — the Step 3 prompt may need splitting.
+- **Demo 7** — Step 3 now says to create the scratch repo first and install inside it (or
+  use `-s user`), and Step 6 uninstalls with `-s local`. Does the corrected flow block the
+  force push with `BRANCH-GUARD`?
+- **Demo 8** — now carries `--allow-tools Bash --no-publish`, and the note says the Step 1
+  lint FAIL is expected because it is a Lab 2 rule firing on the wrong plugin.
 
 ---
 
-## 5. One live re-test worth doing
+## 5. Lab 1's subfolder note
 
-**Lab 1 Step 3, from a subfolder.** Run 1 found that starting Claude Code in
-`ledgerlite/src` meant the project's `.claude/settings.json` did not apply: the hook never
-ran and a recursive force delete executed. `$CLAUDE_PROJECT_DIR` does not cover that.
-
-Before the text is changed, confirm it: does starting at the project root fix it, and is
-there any setting that makes the hook fire from a subfolder? This decides whether the
-answer is a sentence in the lab or something more.
+Run 2 settled the cause: Claude Code reads project settings from the folder it starts in,
+not the git root, so from `src/` the root settings are never read at all. Lab 1 Step 3
+now carries that as a note. Just read it and say whether it states the case correctly —
+no re-test needed unless you think it is wrong.
 
 ---
 
