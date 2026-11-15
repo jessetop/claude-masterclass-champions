@@ -2,8 +2,11 @@
   "sandbox": {
     "enabled": true,
     "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
     "network": {
-      "allowedDomains": ["pypi.org"]
+      "allowedDomains": [
+        "pypi.org"
+      ]
     }
   }
 }

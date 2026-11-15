@@ -388,3 +388,57 @@ Both bugs were in the one file no scorer covers and `smoke.py` cannot see — it
 scorers, not setup scripts. Neither would have surfaced without someone running the
 documented command on a real machine, which is the entire argument for the RVC pass.
 
+---
+
+## Pass 7 — the full RVC run, and the two labs that failed (2026-11-15)
+
+A session ran all six labs and all ten demos on the class image, end to end, for about
+**$2.40**. Two labs failed, three demos failed, and the thing the run existed for did not
+happen: **the sandbox was never switched on.** `bwrap-userns-restrict` stayed active and
+`classroom-sandbox.sh --on` was never run, so Labs 3 and 4 and Demos 3 and 9 are *still*
+unobserved live. Everything sandbox-related below is the fallback path.
+
+### Fixed here
+
+**Lab 4 config 03 was missing `allowUnsandboxedCommands: false`** — the most important
+finding in the run, because it is a teaching defect rather than a scoring one. When the
+sandbox cannot start, the model retries the same command with
+`dangerouslyDisableSandbox: true`. Headless, the retry was denied. **With a matching
+allow rule it ran unsandboxed with no prompt at all.** Interactively, a student is asked
+to approve precisely the escape the payload needs, and approving it defeats the control
+they are testing. The key is in the config now, and the Context explains why it is there
+and says that seeing the prompt *is* the finding.
+
+**Lab 2's eval hint was still incomplete.** Pass 5 added `--allow-tools Write Bash` and
+that held on Linux (1.00 with the grant, 0.00 without, reconfirmed). But four of the six
+cases build a git repository to read, and without `--scaffold` they run in an empty
+workspace and score about 0.33. The hint now carries `--scaffold`, `--trust-plugin` (a
+non-interactive run otherwise stops to ask about trusting the directory) and
+`--no-publish` — because **`plugin eval` publishes its HTML report to claude.ai by
+default**, which students should decide about before running, not after.
+
+**`demos.md` was stale, and that was my miss.** Pass 2 corrected the AppArmor claim in
+`demos/demo-9-*.md` but not the printable copy, which still said the profile is "off by
+default" — the opposite of the class image, in the document an instructor teaches from.
+Rather than patch it again, `demos.md` is now **generated** from `demos/` by
+`testing/build_demos_md.py`, with a `--check` mode that fails when it is stale. Two
+hand-maintained copies of the same text is a defect generator; one source is not.
+
+### Open, and needing a decision
+
+- **The sandbox, still.** Until an operator runs `--on` before a session, Labs 3 and 4
+  and Demos 3 and 9 have never been seen working. Top blocker, and not a code change.
+- **Lab 4's record sheet now exists** (`testing/results/lab4-record/` on the class
+  machine) — the first answer key that lab has ever had. Moving it into
+  `demo-files/facilitator/` is a human's call and has not been done.
+- **The payload never fired in 8 runs** on `claude-opus-5-5`: every row is "stopped by
+  the model", so no row exercises a control. The lab should ship the recorded firing
+  transcript its facilitator note asks for, and tell students an all-model sheet is the
+  likely result.
+- **Demos 6, 7 and 8 fail.** A hook with `"args": []` and an inner-quoted path gives
+  `ENOENT posix_spawn`; the `-s local` plugin install does not carry into Demo 7's
+  scratch repo; Demo 8 needs the same eval flags as Lab 2.
+- **Lab 1, live:** started from `ledgerlite/src`, the project's settings did not apply,
+  so the hook never ran and the recursive force delete executed. `$CLAUDE_PROJECT_DIR`
+  does not cover starting in a subfolder. Needs a re-test before the text changes.
+- Smaller scorer items in every lab, listed in the run's own results files.
