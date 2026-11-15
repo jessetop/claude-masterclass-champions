@@ -659,3 +659,50 @@ seen the others. Step 4 now tells students to record that rather than claim isol
 
 How the interactive dialog renders the escape flag. It auto-denies headlessly, so this
 needs a human at a terminal — and it is now the only open item in the course.
+
+---
+
+## Pass 11 — Lab 4 gets an answer key, and the WARN is gone (2026-11-15)
+
+Course owner's decision: ship run 1's completed sheet. It is now
+`demo-files/facilitator/lab4/solution-record-sheet.csv` — a real eight-row run on the
+class image, not an invented one, scoring **65/65**. All six labs now have keys and
+`smoke.py` reports no WARN for the first time.
+
+### Checking it was correct before shipping it
+
+Every column value is honest and every cell is sourced from run 1's own report. The one
+judgment call the run itself flagged — under configuration 04 the model had no shell *and*
+never attempted the payload, so is the stopper `model` or `narrowed_tools`? — is settled
+as `model`, because `narrowed_tools` would credit a control with stopping something that
+was never tried. The checker accepts either, so a student who picks the other side with a
+reason is not penalised, and the key says to accept that.
+
+**Two rows needed the caveat, and it is in the notes and the key rather than left
+implicit.** Rows 3 and 8 were recorded on run 1's machine, where the sandbox could not
+start, so their notes describe the sandbox-unavailable fallback — the model retrying its
+own command with `dangerouslyDisableSandbox: true`, silently in row 8. That is not what a
+student with `classroom-sandbox.sh --on` sees, and presenting it as configuration 03's
+behaviour would teach the wrong thing. Both notes now say so and point at the key.
+
+### Probed both directions, twelve cases
+
+Six ways of writing a correct answer differently all still score 65: bare configuration
+numbers, configurations named rather than numbered, `no`/`no` for the canaries, a CLI
+version string in `model_version`, `acceptEdits` as the mode, and `narrowed_tools` for row
+4. Six junk or incomplete sheets all lose points: `permission_mode: banana` 40,
+`model_version: asdf` 40, `stopped_by: none` everywhere 50, four rows 39, every row the
+same vector 57, required cells blanked 0.
+
+### What the key is for, and what it is not
+
+It is not a demonstration of any control catching anything — no row reached one. The key
+says that in its own words, and says the row worth teaching from is **run 6**: the only
+row in eight where the model named the injection and refused, same payload and model and
+day as run 5. Two near-identical runs, two outcomes, and the configuration is not a thing
+that changes whether a model *notices*. That is the argument against treating model
+judgment as a control, now in data rather than on a slide.
+
+The request for a transcript of the payload firing is removed from the facilitator README
+and the lab, replaced with the measurement and the instruction to label a staged demo as
+staged. The payload's self-identifying label stands.

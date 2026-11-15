@@ -10,7 +10,7 @@ Do not share this folder with students. `make-student-pack.sh` removes it for yo
 | Lab 1 | `lab1/solution/` (`ledgerlite/.claude/settings.json`, `ledgerlite/.claude/hooks/guard.py`, `charter.md`) |
 | Lab 2 | `lab2/solution-marketplace/` (a marketplace named `team-tools` holding the finished `relnotes` plugin) |
 | Lab 3 | `lab3/solution/report-archiver/` and `lab3/key.md` |
-| Lab 4 | `lab4/key.md` |
+| Lab 4 | `lab4/key.md`, `lab4/solution-record-sheet.csv` (a real run, 65/65; the payload never fired - read the key before using it) |
 | Lab 5 | `lab5/rubric.md`, `lab5/solution-findings.md`, `lab5/score_audit.py` |
 | Lab 6 | `lab6/solution/` |
 
@@ -38,5 +38,5 @@ These were built without model calls. Rehearse each on the class image the day b
 5. Demos 7 and 8: the install name form, `/reload-plugins` versus a restart, and whether `claude plugin eval` accepts a `case.yaml` path.
 6. Demo 9 and Lab 3: the sandbox on the class image, including Ubuntu 24.04 and later (AppArmor), containers, and `failIfUnavailable`.
 7. Lab 2: whether an exit-2 PostToolUse hook's message reaches Claude (the `hook-lints-bad-notes` case).
-8. Lab 4: run each payload under configuration 01 on the model the class will use. Check loopback behavior under the sandbox network proxy. Keep a recorded transcript of a run where the payload fired.
+8. Lab 4: run each payload under configuration 01 on the model the class will use, and check loopback behaviour under the sandbox network proxy. **Do not plan on a transcript of the payload firing** - 30 runs across 7 models produced none, and `lab4/solution-record-sheet.csv` is the completed sheet to teach from instead. Read `lab4/key.md` on what that sheet does and does not show.
 9. Model names and aliases change quickly. Recheck the model-config page the day before class.

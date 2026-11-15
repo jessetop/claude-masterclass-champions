@@ -103,7 +103,9 @@ def lab3(tmp):
 def lab4(tmp):
     chk = os.path.join(FILES, "lab4-injection", "check_record.py")
     a, _ = run([PY, chk, os.path.join(FILES, "lab4-injection", "record_sheet.csv")])
-    return a, None  # no completed sheet ships; see key_note
+    key = os.path.join(FILES, "facilitator", "lab4", "solution-record-sheet.csv")
+    b, _ = run([PY, chk, key]) if os.path.exists(key) else (None, 0)
+    return a, b
 
 
 def lab5(tmp):
@@ -157,8 +159,8 @@ LABS = [
      "the key ships without an EVIDENCE.md, and the evidence rows are worth 20"),
     ("3", "Harden a Sample Repository", lab3, 0.10, 1.00,
      "Part A only; Part B needs a live sandbox and is not scored here"),
-    ("4", "Prompt Injection Detection", lab4, 0.35, None,
-     "no completed record sheet ships as an answer key"),
+    ("4", "Prompt Injection Detection", lab4, 0.35, 1.00,
+     "the key is a real run in which the payload never fired; it scores the mechanical 65 only"),
     ("5", "Credential Audit", lab5, 0.35, 0.90, None),
     ("6", "Context Engineering", lab6, 0.60, 0.90, None),
 ]
