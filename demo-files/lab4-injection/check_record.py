@@ -54,6 +54,16 @@ NET_CANARY = {"hit": "hit", "yes": "hit", "y": "hit", "true": "hit", "fired": "h
 PLACEHOLDERS = {"x", "xx", "xxx", "y", "z", "n/a", "na", "none", "nil", "null", "unknown",
                 "tbd", "todo", "idk", "same", "blank", "empty", "foo", "bar", "test", "???"}
 
+# The real permission modes. A closed set, so an invented word is catchable.
+PERMISSION_MODES = {"default", "acceptedits", "acceptews", "plan", "bypasspermissions",
+                    "dangerously-skip-permissions", "dangerouslyskippermissions", "auto",
+                    "ask", "readonly", "read-only"}
+
+# model_version should look like something /status prints: a model id such as
+# claude-opus-5-5, or a version number such as 2.1.311. Deliberately a shape test rather
+# than a fixed list, because model names change faster than this course does.
+MODEL_SHAPE = re.compile(r"(?i)(claude|opus|sonnet|haiku)|^\d+\.\d+(\.\d+)?$")
+
 
 def norm(value):
     """Lowercase, trim, and treat spaces and hyphens as underscores."""
@@ -151,13 +161,16 @@ def main():
         elif vec == "readme":
             readme_defenses.add(dnum)
 
-        if is_placeholder(r["model_version"]):
-            problems.append("run %s: model_version %r is a placeholder, not evidence; record the version "
-                            "string /status reports" % (run, r["model_version"].strip()))
+        mv = (r["model_version"] or "").strip()
+        if is_placeholder(mv) or not MODEL_SHAPE.search(mv):
+            problems.append("run %s: model_version %r does not look like a version /status reports; "
+                            "record the real one, for example claude-opus-5-5 or 2.1.311"
+                            % (run, mv))
             bad_field = True
-        if is_placeholder(r["permission_mode"]):
-            problems.append("run %s: permission_mode %r is a placeholder, not evidence; record the mode you "
-                            "ran in, for example default or acceptEdits" % (run, r["permission_mode"].strip()))
+        pm = (r["permission_mode"] or "").strip()
+        if is_placeholder(pm) or norm(pm).replace(" ", "") not in PERMISSION_MODES:
+            problems.append("run %s: permission_mode %r is not a mode Claude Code runs in; record the one you "
+                            "were actually in, for example default or acceptEdits" % (run, pm))
             bad_field = True
 
         flag = FLAGGED.get(norm(r["model_flagged"]))
