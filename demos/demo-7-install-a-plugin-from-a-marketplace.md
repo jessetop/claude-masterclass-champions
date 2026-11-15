@@ -17,9 +17,11 @@
 1. Add the marketplace from the local folder: `claude plugin marketplace add $FILES/demo7-marketplace/champions-tools`, then `claude plugin marketplace list`. Say where a team marketplace would come from instead: a git repository (`owner/repo` or a git URL).
 2. Review before you trust. Open `plugins/branch-guard/hooks/hooks.json` and `scripts/block_force_push.py`. Then list the contents: `claude --plugin-dir $FILES/demo7-marketplace/champions-tools/plugins/branch-guard plugin details branch-guard`. Read the component inventory and the projected token cost.
 3. Install it for yourself only: `claude plugin install branch-guard -s local`.
+
+   > **Create the Step 4 scratch repository first, and install from inside it.** `-s local` applies only in the folder you install from, so installing here and then moving to a new folder in Step 4 leaves the plugin unavailable — which is what happened on the class image. Either make the scratch repo before this step and run the install there, or use `-s user` so it follows you.
 4. In a scratch repository (`git init`, one commit), start `claude`. Run `/reload-plugins` if the plugin does not show. Run `/branch-guard:branch-status`.
 5. Ask: `Run git push --force origin main`. The hook blocks it, and the message starts with `BRANCH-GUARD`.
-6. Uninstall and remove: `claude plugin uninstall branch-guard` and `claude plugin marketplace remove champions-tools`.
+6. Uninstall and remove: `claude plugin uninstall branch-guard -s local` and `claude plugin marketplace remove champions-tools`. **The scope flag is needed**: a bare `uninstall` assumes user scope and fails to find a local-scope install.
 
 **Expected result:** The command reports the branch and the working tree state. The force push is blocked by the plugin's hook and Claude relays the reason.
 

@@ -30,7 +30,9 @@
    - Acceptance criteria:
      - `.claude/settings.json` runs the hook before the `Bash` tool, and the command locates the script from the project directory and not from the current directory.
      - `permissions.deny` has `Read` rules that cover `.env` and `config/secrets.env`.
-   - Hints: Check which tool the matcher names. A hook command that starts with a relative path breaks when Claude Code is started from a subfolder. The docs use a project directory variable for this — `${CLAUDE_PROJECT_DIR}` and `$CLAUDE_PROJECT_DIR` both work, and the scorer accepts either. Check the spelling of every path in a deny rule. A deny rule on the Read tool is not the same as protecting a file from shell commands. Write that down for the charter.
+   - Hints: Check which tool the matcher names. A hook command that starts with a relative path breaks when Claude Code is started from a subfolder.
+
+   > **Start Claude Code at the project root.** Confirmed on the class image, 2026-11-15: Claude Code reads project settings from **the folder it starts in, not the git root**. Started in `ledgerlite/src`, the root `.claude/settings.json` is never read at all — the debug log shows `Registered 0 hooks` — so the hook does not fire *and* the deny rules do not apply, and a recursive force delete runs. `${CLAUDE_PROJECT_DIR}` does not rescue this: if the settings are loaded another way it resolves to `src/`, the hook path breaks, `python3` exits 2, and then *every* Bash call is blocked by accident. There is no team-wide fix — only a personal `settings.local.json` using `git rev-parse --show-toplevel` works from a subfolder. So: start at the root, and know why. The docs use a project directory variable for this — `${CLAUDE_PROJECT_DIR}` and `$CLAUDE_PROJECT_DIR` both work, and the scorer accepts either. Check the spelling of every path in a deny rule. A deny rule on the Read tool is not the same as protecting a file from shell commands. Write that down for the charter.
 
 4. **Fill in the charter (about 6 minutes).** Goal: a charter that tells the truth about where your team stands.
    - Acceptance criteria:

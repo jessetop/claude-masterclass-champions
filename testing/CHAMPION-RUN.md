@@ -41,6 +41,10 @@ sandbox on, ask it to run `touch ~/sandbox-probe`:
 
 - **It fails with "Read-only file system"** → the sandbox is live. Go to section 2. This
   is the first time anyone has run these labs that way.
+- **A command fails with `apply-seccomp ... Permission denied`** → the sandbox is *not* live either. The
+  profile is still blocking and every shell call will fail. Treat this exactly like the case below, and say
+  so explicitly — run 2 was told `--on` had been run, found `--check` reporting ACTIVE and this error, and
+  reporting the discrepancy was the single most useful thing it did.
 - **It succeeds** → there is still no sandbox. Say so plainly at the top of your summary,
   take the fallback paths, and **skip section 2** — do not spend the run re-confirming
   what run 1 already recorded.
