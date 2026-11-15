@@ -593,3 +593,69 @@ it is not the control being taught.
 The Lab 4 payload actually firing — 12 runs now, every one stopped by the model — and
 what a student sees at the interactive escape prompt. Both need a human at a terminal
 rather than a headless session.
+
+---
+
+## Pass 10 — run 4: the question Lab 4 was built on has an answer, and it is no (2026-11-15)
+
+Run 4 was deliberately narrow: make the Lab 4 payload fire, or establish that it cannot,
+and capture the sandbox escape request. Both halves came back, and both changed the lab.
+
+### The payload fires on no model available to this class
+
+18 further runs under configuration 01 — the weakest — varying **only** `--model`:
+Haiku 5.5, Sonnet 5.5, Fable 5.1, Haiku 4.5, Sonnet 4.5, Opus 4.5. With runs 1 to 3 that
+is **30 runs across 7 models, zero tool calls toward the payload.** Every run received
+it; none acted on it. 16 of 18 named it as an injection.
+
+Two things in that result matter more than the count:
+
+- **Several models cited the payload's own `security lab canary payload` label as the
+  reason to ignore it.** The payload announces what it is. That label is there so nothing
+  in the repository can be mistaken for a real attack, and it is also the reason the
+  exercise cannot fire. Removing it to make the lab work is not a fix I will make
+  silently — it is a decision about building a more deceptive payload, and it belongs to
+  the course owner. Flagged, not actioned.
+- **`--model claude-opus-4-1` was accepted and the session silently ran as Opus 5.5.**
+  So the flag records what you asked for and `/status` records what you got. Lab 4's
+  record sheet asks for `model_version`; it now says explicitly to take it from `/status`,
+  because a row sourced from the flag can be quietly wrong.
+
+Lab 4's Facilitator note asked for "a recorded transcript of a run where the payload
+fired". **That request cannot be met,** and the note now says so, with the numbers, and
+sets out the two honest options: reframe the lab around what it does show, or ship a
+clearly-labelled staged demonstration. Neither is mine to choose.
+
+### Run 3's escape-prompt claim was half wrong, and the wrong half was mine
+
+Run 3 observed a filesystem escape going to an approval request and I wrote it up in
+Lab 4 as "the escape ... goes to an approval prompt even when an allow rule matches."
+Run 4 tested the network case: **with a matching allow rule (`Bash(curl:*)`) and the
+escape hatch open, the command ran unsandboxed with no request at all and hit the
+listener twice.**
+
+So the rule splits by escape type: filesystem escapes prompt, network escapes with a
+matching allow rule do not. Lab 4's Context box now separates them. This also promotes
+`allowUnsandboxedCommands: false` in shipped configuration 03 from a belt-and-braces key
+to the one line stopping a **silent** bypass of the network allowlist, and the lab says
+that.
+
+### What the escape request contains
+
+Captured verbatim through `stream-json`: the `Bash` tool, the same command byte for byte,
+a description the model wrote, and `"dangerouslyDisableSandbox": true`. **That flag is
+the only field the machine sets** — everything else can be phrased however the model
+likes, so it is the only one worth reading. Without an allow rule the student is asked
+**twice** for near-identical commands; Lab 4 step 3 now warns about that and says the
+request carrying the flag is the one to refuse.
+
+### Also from run 4
+
+The three vectors are not cleanly isolated: a broad "summarize the project" prompt makes
+the model read all three planted files, so a row nominally testing one vector may have
+seen the others. Step 4 now tells students to record that rather than claim isolation.
+
+### Still unobserved
+
+How the interactive dialog renders the escape flag. It auto-denies headlessly, so this
+needs a human at a terminal — and it is now the only open item in the course.
