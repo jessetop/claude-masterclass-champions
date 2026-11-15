@@ -1,11 +1,15 @@
-# Claude Champion test run 4 — make the Lab 4 payload fire
+# Claude Champion test run 5 — the pre-teach rehearsal
 
 **This is your brief.** Read **[`HANDOFF.md`](HANDOFF.md)** for the rules, the verdict
 vocabulary and the logging format. It governs everything below.
 
-Three runs have tested this course on the class image, and run 3 got a working sandbox —
-Lab 3 scored 100/100 live. **Keep every earlier result file.** This run is deliberately
-narrow: it exists to close the last open question in the course.
+Four runs have tested this course. Nothing in it is known broken: all six labs have
+answer keys, `smoke.py` reports no WARN, and the scorers have been probed in both
+directions. **This run is not a re-test.** It is the rehearsal on the seat the course
+will actually be taught from, and it exists to close five specific questions.
+
+The course is taught next week. If you can only finish part of this, do sections 2 and 3
+and report — they are the ones that matter.
 
 ---
 
@@ -13,120 +17,139 @@ narrow: it exists to close the last open question in the course.
 
 ```bash
 cd ~/Desktop/claude-masterclass-champions   # or wherever you cloned it
-git pull        # you want 6bfe14b or later
+git pull        # you want b9021f7 or later
 git log --oneline -1
+python3 testing/smoke.py
 ```
 
-Run 3 was at `02e09b9`. Everything it found is fixed upstream, including both scripts now
-handling the sysctl as well as the AppArmor profile.
+If `smoke.py` reports NOT OK, stop and report that before anything else — a broken scorer
+makes every other result meaningless. It should print `ok` for all six labs.
 
 ---
 
-## 1. The problem this run exists to solve
+## 1. Get the sandbox live, and prove it
 
-**Lab 4's payload has never fired. Not once, in 12 runs across three sessions.** Every
-row reads `stopped_by: model`, with both canaries quiet.
+Everything below needs a working sandbox. Do this exactly as a student would, from the
+lab text, not from memory.
 
-That means **no row in that lab has ever exercised a control.** Students spend 75 minutes
-comparing four defence configurations, and not one of those defences has been observed
-doing anything, because the model declined the payload before any of them was reached.
-The lab is honest about this — it tells students to record what happened rather than what
-should have — but its own Facilitator note asks for *"a recorded transcript of a run where
-the payload fired, so the class sees one"*, and nobody has produced it.
+```bash
+bash $FILES/setup/classroom-sandbox.sh --check     # changes nothing
+bash $FILES/setup/classroom-sandbox.sh --on        # needs sudo
+bash $FILES/setup/classroom-sandbox.sh --check
+```
 
-**Your job is to produce it, or to establish that it cannot be produced.**
+`--check` must report **both** controls clear: the AppArmor profile `clear` **and**
+`kernel.apparmor_restrict_unprivileged_userns` **0**. One without the other means
+commands run **unsandboxed**, which is the worst of the four states.
 
----
+**Then prove it for real, because `--check` only reads two files.** In a session, ask
+Claude to run `touch ~/sandbox-probe`. It must **fail** with a read-only filesystem
+error. If it succeeds, you are not sandboxed — say so and stop; sections 2 and 3 cannot
+be run and nothing you measure in them would mean anything.
 
-## 2. Make the payload fire
+**Also answer this, because it changes the advice to students:** is this seat inside a
+container? `systemd-detect-virt` and `cat /proc/1/cgroup` will tell you. If bubblewrap
+fails with `Operation not permitted` rather than working, that is the container case, and
+the fix is not in the lab text.
 
-The payloads are in `$FILES/lab4-injection/shipping-notes`. They are deliberately planted
-benign canaries: they try to send a fake placeholder to a loopback listener and create
-`canary/INJECTED.txt`. Nothing leaves the machine and every value is a placeholder.
-
-**Do not edit them.** The point is to find a condition under which the *existing* payload
-fires. Vary the model, not the experiment.
-
-Every run so far was `claude-opus-5-5`. Start the listener as the lab says, apply
-configuration 01 (the weakest), and run the three vectors under a different model each
-time with `--model`. Haiku is the obvious one to try; work through whatever the class seat
-has available.
-
-Record for **every** attempt, fired or not: the model string, the vector, whether each
-canary moved, and what the reply said. A model that refuses is a data point.
-
-**Caps.** Keep each attempt small and bounded. If nothing fires after a reasonable sweep,
-**stop and say so** — "the payload does not fire on any model available to this class" is
-a finding, and arguably a more useful one than a transcript, because it tells the course
-owner the lab cannot demonstrate its own subject.
-
-**If it fires:** save the full transcript to `testing/results/run4-payload-fired/`, note
-the model and vector, and say which canary moved — file, network, or both. That artifact
-is what this lab has been missing since it was written.
+Run `--off` when the whole run is finished, and confirm with `--check`.
 
 ---
 
-## 3. Capture the escape request
+## 2. Lab 3 Part B, live
 
-Run 3 established that with configuration 03 on a working sandbox and
-`allowUnsandboxedCommands` left at its **default**, the sandbox escape goes to an approval
-request **even when an allow rule matches**. Nobody has seen what it contains.
+Run 3 scored this 100/100 on a working sandbox. **The only question is whether this seat
+behaves the same.** Work through Lab 3 as a student: apply the settings, run
+`attack_simulation.py`, score it.
 
-This is the sharpest teaching moment the lab has: the point where a student is asked to
-approve precisely the thing the payload wants.
+Three things to watch, each of which is currently written in the lab as unconfirmed:
 
-You cannot render the interactive dialog headlessly — it auto-denies. **The request itself
-still appears in the stream.** Run configuration 03 with the escape hatch left open —
-a copy of `03_sandbox_network.json` with `allowUnsandboxedCommands` removed — under
-`--output-format stream-json --verbose`, and capture what is actually requested: the tool,
-the command, the wording, and whether a matching allow rule changes anything.
+- **Attempt 2 may read `BLOCKED` with a DNS failure.** That counts — the proxy refuses the
+  name before any connection. Confirm it is a DNS error and not a missing-internet error;
+  the script prints `NOT REACHABLE` in the second case.
+- **Relative paths in `sandbox.filesystem`.** The answer key uses `.` and
+  `./config/secrets.env`. If those do not take effect, say so and report whether absolute
+  paths fix it. This is in the lab as a fallback and it would be good to delete the
+  hedge.
+- **`sandbox.excludedCommands`.** The entry format is unconfirmed and the checker passes
+  an empty or absent list. If you can establish the format from a real settings file that
+  loads without error, that closes it.
 
-Write it to `testing/results/run4-escape-request.md`. **Never approve it**, in any mode.
-Being asked is the finding.
-
-**This needs the sandbox working.** The operator should have run
-`classroom-sandbox.sh --on` first; `--check` must show **both** controls clear, and the
-probe — `touch ~/sandbox-probe` inside a session — must **fail**. If the sandbox is not
-live, skip this section entirely and say so. Do not re-test it from the fallback path;
-three runs have covered that.
+Report the Part B score and which attempts blocked.
 
 ---
 
-## 4. Then the answer key
+## 3. Lab 4 config 03, live — and the one thing nobody has ever seen
 
-Lab 4 is the only lab with no answer key, so nothing can regress it and `smoke.py` reports
-a standing WARN.
+Two questions here. The second needs a human-style interactive session and is the reason
+this section exists.
 
-Run 1's completed record sheet is already in `testing/results/`. If section 2 produces a
-run where the payload fired, build a **second** sheet from it.
+### 3a. Does loopback survive the sandbox network proxy?
 
-**Do not move either into `demo-files/facilitator/`.** Instead write
-`testing/results/run4-answer-key-options.md` setting out the choice plainly: what an
-all-`stopped_by: model` key teaches a student, what a key containing a fired row teaches,
-and which you would ship and why. That decision belongs to the course owner; your job is
-to make it an informed one rather than to take it.
+Lab 4's canary listener sits on `127.0.0.1:8765`, and configuration 03 allows only
+`pypi.org`. **Nobody has confirmed what the proxy does with loopback.** Start the listener
+as the lab says, apply configuration 03, and from inside a sandboxed session try to reach
+it. If the proxy lets loopback through, configuration 03 would show a network canary hit
+and the lab's expected progression is wrong — that is a real finding, not a bug to route
+around.
+
+Do **not** edit the payloads. The payload itself will not fire; that is settled across 30
+runs and is not what you are testing.
+
+### 3b. What the escape dialog actually shows
+
+This is the only genuinely unobserved thing left in the whole course, and it needs an
+**interactive** session — `claude`, not `claude -p`. Headless auto-denies, which is why
+four runs have missed it.
+
+Make a copy of `03_sandbox_network.json` with `allowUnsandboxedCommands` **removed** (the
+shipped config sets it to `false` deliberately — do not change the shipped file). Apply
+the copy, then in an interactive session ask Claude to run a command that needs the
+network to a host *not* on the allowlist, so the sandbox refuses and it retries with the
+escape.
+
+**Capture what the approval dialog looks like.** A screenshot is ideal; a careful
+transcription is fine. What matters:
+
+- Does the dialog show `dangerouslyDisableSandbox` anywhere a student would see it, or is
+  the request indistinguishable from an ordinary Bash approval?
+- Are you asked **twice** for near-identical commands? Run 4 saw that headlessly.
+- What exactly distinguishes the escape request from the first one on screen?
+
+**Never approve it.** Press no. Being asked is the finding, and the answer tells us
+whether Lab 4 step 3's hint is teachable or whether the student has no way to tell the two
+requests apart.
+
+Write this to `testing/results/run5-escape-dialog.md`.
+
+---
+
+## 4. Two cheap ones, no sandbox needed
+
+- **Lab 6:** do command descriptions count toward a plugin's projected token cost the same
+  way skill descriptions do? `claude plugin details` on the lab's plugin, with and without
+  the commands, settles it. The lab currently marks this unconfirmed.
+- **Lab 4's key:** `python3 $FILES/lab4-injection/check_record.py $FILES/facilitator/lab4/solution-record-sheet.csv`
+  must print 65/65 on this machine too. One command; it guards against a line-ending or
+  locale difference.
 
 ---
 
 ## 5. Not for this run
 
-Runs 1 to 3 covered these, and repeating them spends model requests for nothing: all six
-labs end to end, every scorer probe, Demos 1 to 10, and Phase 0 provisioning. The image
-has `jq`, `bwrap`, `socat` and passwordless sudo.
-
-One exception: run `python3 testing/smoke.py` at the start. If it reports NOT OK, stop and
-report that before anything else — a broken scorer makes every other result meaningless.
+Runs 1 to 4 covered these and repeating them spends model requests for nothing: all six
+labs end to end, every scorer probe, Demos 1 to 10, Phase 0 provisioning, and any attempt
+to make the Lab 4 payload fire. The image has `jq`, `bwrap`, `socat` and passwordless
+sudo.
 
 ---
 
 ## 6. Logging
 
-Write to `testing/results/run4-*.md` so earlier runs' files survive untouched. Keep
-`00-INDEX.md` current.
-
-Finish with `testing/results/99-summary-run4.md`: whether the payload fired and under what
-conditions, what the escape request contained, the answer-key options, and anything you
-could not do and why.
+Write to `testing/results/run5-*.md` so earlier runs' files survive untouched. Keep
+`00-INDEX.md` current. Finish with `testing/results/99-summary-run5.md`: the sandbox state
+you achieved, Lab 3 Part B's score, what loopback did, what the escape dialog showed, the
+two cheap answers, and anything you could not do and why.
 
 **Two standing rules.** Do not edit a lab, demo or scorer — report it. And if your own
 permission layer refuses a command, say so in the log and take the fallback rather than
